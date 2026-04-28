@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetMind.Common\NetMind.Common.csproj" />
+    <ProjectReference Include="..\NetMind.Models\NetMind.Models.csproj" />
+    <ProjectReference Include="..\NetMind.Services\NetMind.Services.csproj" />
+  </ItemGroup>
+
+</Project>

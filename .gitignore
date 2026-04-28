@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.vs/
+*.csproj.user
+.dotnet-home/
+.nuget-packages/
+.nuget-cache/
+.npm-cache/
+npm-debug.log*

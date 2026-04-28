@@ -1,0 +1,6 @@
+@NetMind.WebApi_HostAddress = http://localhost:5119
+
+GET {{NetMind.WebApi_HostAddress}}/api/system/health
+Accept: application/json
+
+###
