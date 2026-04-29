@@ -9,6 +9,12 @@ using NetMind.WebApi.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
+    string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
+{
+    builder.WebHost.UseUrls("http://127.0.0.1:5119");
+}
+
 builder.Services.AddControllers();
 builder.Services.AddSingleton<IProjectStatusRepository, ProjectStatusRepository>();
 builder.Services.AddSingleton(_ => new PostgresConnectionFactory(
@@ -25,6 +31,11 @@ builder.Services.AddHttpClient<IAiCleanService, AiCleanService>();
 builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration));
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    StartFrontendDevServer(app);
+}
 
 app.Use(async (context, next) =>
 {
@@ -52,7 +63,7 @@ app.Use(async (context, next) =>
 app.UseRouting();
 
 var frontendDistRoot = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "NetMind.Frontend", "dist"));
-if (Directory.Exists(frontendDistRoot))
+if (!app.Environment.IsDevelopment() && Directory.Exists(frontendDistRoot))
 {
     var frontendFiles = new PhysicalFileProvider(frontendDistRoot);
     app.UseDefaultFiles(new DefaultFilesOptions
@@ -69,8 +80,97 @@ app.MapControllers();
 app.MapGet("/swagger/v1/swagger.json", () => Results.Json(SwaggerDocumentFactory.Create()));
 app.MapGet("/swagger", () => Results.Content(SwaggerDocumentFactory.CreateHtml(), "text/html; charset=utf-8"));
 app.MapGet("/swagger/index.html", () => Results.Content(SwaggerDocumentFactory.CreateHtml(), "text/html; charset=utf-8"));
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/", () => Results.Redirect("http://127.0.0.1:5173"));
+}
 
 app.Run();
+
+static void StartFrontendDevServer(WebApplication app)
+{
+    const int frontendPort = 5173;
+    if (IsTcpPortOpen("127.0.0.1", frontendPort))
+    {
+        return;
+    }
+
+    var frontendRoot = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "NetMind.Frontend"));
+    if (!Directory.Exists(frontendRoot))
+    {
+        app.Logger.LogWarning("Frontend directory was not found: {FrontendRoot}", frontendRoot);
+        return;
+    }
+
+    var startInfo = OperatingSystem.IsWindows()
+        ? new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c npm run dev")
+        : new System.Diagnostics.ProcessStartInfo("npm", "run dev");
+
+    startInfo.WorkingDirectory = frontendRoot;
+    startInfo.UseShellExecute = false;
+    startInfo.RedirectStandardOutput = true;
+    startInfo.RedirectStandardError = true;
+    startInfo.CreateNoWindow = true;
+
+    try
+    {
+        var process = System.Diagnostics.Process.Start(startInfo);
+        if (process is null)
+        {
+            app.Logger.LogWarning("Failed to start the frontend dev server.");
+            return;
+        }
+
+        process.OutputDataReceived += (_, eventArgs) =>
+        {
+            if (!string.IsNullOrWhiteSpace(eventArgs.Data))
+            {
+                app.Logger.LogInformation("[frontend] {Message}", eventArgs.Data);
+            }
+        };
+        process.ErrorDataReceived += (_, eventArgs) =>
+        {
+            if (!string.IsNullOrWhiteSpace(eventArgs.Data))
+            {
+                app.Logger.LogWarning("[frontend] {Message}", eventArgs.Data);
+            }
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        app.Lifetime.ApplicationStopping.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogDebug(ex, "Failed to stop the frontend dev server process.");
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to start the frontend dev server.");
+    }
+}
+
+static bool IsTcpPortOpen(string host, int port)
+{
+    try
+    {
+        using var client = new System.Net.Sockets.TcpClient();
+        var connectTask = client.ConnectAsync(host, port);
+        return connectTask.Wait(TimeSpan.FromMilliseconds(300)) && client.Connected;
+    }
+    catch
+    {
+        return false;
+    }
+}
 
 static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration)
 {

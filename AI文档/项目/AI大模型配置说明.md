@@ -144,7 +144,7 @@ P1.2 开始移除本地模拟清洗，AI 清洗统一通过配置文件中的真
 ```json
 {
   "ConnectionStrings": {
-    "Postgres": "Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=admin;"
+    "Postgres": "Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=xxx;"
   }
 }
 ```
