@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "项目基础说明.md",
+                "file": "NET开发规范.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "项目基础说明"
+              "title": "NET开发规范"
             }
           }
         ]
@@ -185,6 +185,7 @@
   },
   "active": "892d66b4731e3898",
   "lastOpenFiles": [
+    "项目基础说明.md",
     "开发日志.md",
     "Smoke/P1.2-Smoke.ps1",
     "项目研发说明.md",
@@ -193,7 +194,6 @@
     "Smoke/P1.0-Smoke.ps1",
     "Smoke/P0.5-Smoke.ps1",
     "Smoke",
-    "项目基础说明.md",
     "SQL/P0.3_AddLogicalDelete.sql",
     "SQL/Init.sql",
     "SQL",
