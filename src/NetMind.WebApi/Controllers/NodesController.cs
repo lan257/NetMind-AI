@@ -35,7 +35,7 @@ public sealed class NodesController : ControllerBase
         try
         {
             var created = await _nodeService.CreateAsync(request);
-            return CreatedAtAction(nameof(GetAsync), new { id = created.Id }, ApiResult<NodeDto>.Ok(created));
+            return StatusCode(StatusCodes.Status201Created, ApiResult<NodeDto>.Ok(created));
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {

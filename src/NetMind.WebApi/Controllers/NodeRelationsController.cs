@@ -35,7 +35,7 @@ public sealed class NodeRelationsController : ControllerBase
         try
         {
             var created = await _nodeRelationService.CreateAsync(request);
-            return CreatedAtAction(nameof(GetAsync), new { id = created.Id }, ApiResult<NodeRelationDto>.Ok(created));
+            return StatusCode(StatusCodes.Status201Created, ApiResult<NodeRelationDto>.Ok(created));
         }
         catch (Exception ex) when (ex is ArgumentException or ArgumentOutOfRangeException or InvalidOperationException)
         {

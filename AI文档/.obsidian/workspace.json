@@ -186,10 +186,24 @@
   "active": "892d66b4731e3898",
   "lastOpenFiles": [
     "项目研发说明.md",
-    "项目基础说明.md",
+    "Smoke/P1.1-Smoke.ps1",
+    "AI大模型配置说明.md",
     "开发日志.md",
+    "Smoke/P1.0-Smoke.ps1",
+    "Smoke/P0.5-Smoke.ps1",
+    "Smoke",
+    "项目基础说明.md",
     "SQL/P0.3_AddLogicalDelete.sql",
     "SQL/Init.sql",
-    "SQL"
+    "SQL",
+    "NET开发规范.md",
+    "项目说明.md",
+    "阶段开发与人工验收细化模板.md",
+    "金析为证_NET开发规范_v1.0_20260317.md",
+    "金析为证_NET开发规范_v1.0_20260317.assets/image-20260318103315815.png",
+    "金析为证_NET开发规范_v1.0_20260317.assets/image-20260318103258346.png",
+    "金析为证_NET开发规范_v1.0_20260317.assets/image-20260318103221998.png",
+    "金析为证_NET开发规范_v1.0_20260317.assets/image-20260318103026466.png",
+    "金析为证_NET开发规范_v1.0_20260317.assets"
   ]
 }

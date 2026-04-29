@@ -202,6 +202,11 @@ label {
   text-align: center;
 }
 
+.empty.small {
+  padding: 12px;
+  font-size: 13px;
+}
+
 .node-row {
   min-height: 44px;
   padding-left: calc(12px + var(--depth) * 22px);
@@ -220,6 +225,25 @@ label {
 
 .relation-title {
   margin-top: 14px;
+}
+
+.ai-panel,
+.transfer-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #dce5ee;
+}
+
+.transfer-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transfer-import-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .relation-row {
@@ -264,7 +288,9 @@ label {
 
   .topbar-actions,
   .field-row,
-  .button-grid {
+  .button-grid,
+  .transfer-actions,
+  .transfer-import-row {
     grid-template-columns: 1fr;
   }
 

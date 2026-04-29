@@ -17,6 +17,8 @@ builder.Services.AddScoped<IProjectStatusService, ProjectStatusService>();
 builder.Services.AddScoped<IMindMapService, MindMapService>();
 builder.Services.AddScoped<INodeService, NodeService>();
 builder.Services.AddScoped<INodeRelationService, NodeRelationService>();
+builder.Services.AddScoped<IMindMapTransferService, MindMapTransferService>();
+builder.Services.AddScoped<IAiCleanService, AiCleanService>();
 
 var app = builder.Build();
 

@@ -35,7 +35,7 @@ public sealed class MindMapsController : ControllerBase
         try
         {
             var created = await _mindMapService.CreateAsync(request);
-            return CreatedAtAction(nameof(GetAsync), new { id = created.Id }, ApiResult<MindMapDto>.Ok(created));
+            return StatusCode(StatusCodes.Status201Created, ApiResult<MindMapDto>.Ok(created));
         }
         catch (ArgumentException ex)
         {

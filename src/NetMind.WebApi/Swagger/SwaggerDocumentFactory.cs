@@ -11,7 +11,7 @@ internal static class SwaggerDocumentFactory
             {
                 title = "NetMind API",
                 version = "v1",
-                description = "P0.3 mind map, node and node relation CRUD API."
+                description = "Mind map CRUD, import/export and P1.1 AI cleaning API."
             },
             paths = new Dictionary<string, object>
             {
@@ -24,6 +24,13 @@ internal static class SwaggerDocumentFactory
                 ["/api/node-relations/by-map/{mapId}"] = Path("List node relations in a mind map", "get"),
                 ["/api/node-relations/{id}"] = Path("Get, update and logically delete one node relation", "get", "put", "delete"),
                 ["/api/node-relations/by-node/{nodeId}"] = Path("Logically delete all relations connected to one node", "delete"),
+                ["/api/mind-map-transfer/{mapId}/structure"] = Path("Export one full mind map as a structured response", "get"),
+                ["/api/mind-map-transfer/{mapId}/file"] = Path("Export one full mind map as a JSON file", "get"),
+                ["/api/mind-map-transfer/structure"] = Path("Import one full mind map from a structured request", "post"),
+                ["/api/mind-map-transfer/file"] = Path("Import one full mind map from an uploaded JSON file", "post"),
+                ["/api/mind-map-transfer/template"] = Path("Download a JSON import template", "get"),
+                ["/api/ai/models"] = Path("List configured AI model placeholders", "get"),
+                ["/api/ai/clean"] = Path("Clean natural language into the standard mind map transfer structure", "post"),
                 ["/api/system/health"] = Path("Get system health", "get")
             }
         };
