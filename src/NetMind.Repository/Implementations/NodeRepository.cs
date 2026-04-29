@@ -1,218 +1,374 @@
 using NetMind.Models.Entities;
 using NetMind.Repository.Interfaces;
+using Npgsql;
 
 namespace NetMind.Repository.Implementations;
 
 public sealed class NodeRepository : INodeRepository
 {
-    private readonly InMemoryMindMapStore _store;
+    private readonly PostgresConnectionFactory _connectionFactory;
 
-    public NodeRepository(InMemoryMindMapStore store)
+    public NodeRepository(PostgresConnectionFactory connectionFactory)
     {
-        _store = store;
+        _connectionFactory = connectionFactory;
     }
 
-    public Task<IReadOnlyList<NodeEntity>> ListByMapAsync(long mapId)
+    public async Task<IReadOnlyList<NodeEntity>> ListByMapAsync(long mapId)
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at
+            FROM node
+            WHERE map_id = @map_id AND is_deleted = FALSE
+            ORDER BY parent_id NULLS FIRST, order_no, id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("map_id", mapId);
+
+        var result = new List<NodeEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            return Task.FromResult<IReadOnlyList<NodeEntity>>(
-                _store.Nodes
-                    .Where(node => node.MapId == mapId && !node.IsDeleted)
-                    .OrderBy(node => node.ParentId)
-                    .ThenBy(node => node.OrderNo)
-                    .ThenBy(node => node.Id)
-                    .Select(Clone)
-                    .ToList());
-        }
-    }
-
-    public Task<NodeEntity?> GetAsync(long id)
-    {
-        lock (_store.SyncRoot)
-        {
-            var node = _store.Nodes.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            return Task.FromResult(node is null ? null : Clone(node));
-        }
-    }
-
-    public Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo)
-    {
-        lock (_store.SyncRoot)
-        {
-            if (!_store.MindMaps.Any(map => map.Id == mapId && !map.IsDeleted))
-            {
-                throw new InvalidOperationException("Mind map does not exist.");
-            }
-
-            if (parentId.HasValue && !_store.Nodes.Any(node => node.Id == parentId.Value && node.MapId == mapId && !node.IsDeleted))
-            {
-                throw new InvalidOperationException("Parent node does not exist in the same mind map.");
-            }
-
-            var now = DateTimeOffset.UtcNow;
-            var entity = new NodeEntity
-            {
-                Id = _store.NextNodeId(),
-                MapId = mapId,
-                ParentId = parentId,
-                Title = title.Trim(),
-                Content = content,
-                OrderNo = orderNo,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-
-            _store.Nodes.Add(entity);
-
-            var map = _store.MindMaps.First(item => item.Id == mapId);
-            if (!map.RootNodeId.HasValue)
-            {
-                map.RootNodeId = entity.Id;
-                map.UpdatedAt = now;
-            }
-
-            return Task.FromResult(Clone(entity));
-        }
-    }
-
-    public Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo)
-    {
-        lock (_store.SyncRoot)
-        {
-            var node = _store.Nodes.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (node is null || parentId == id)
-            {
-                return Task.FromResult<NodeEntity?>(null);
-            }
-
-            if (parentId.HasValue && !_store.Nodes.Any(item => item.Id == parentId.Value && item.MapId == node.MapId && !item.IsDeleted))
-            {
-                return Task.FromResult<NodeEntity?>(null);
-            }
-
-            node.ParentId = parentId;
-            node.Title = title.Trim();
-            node.Content = content;
-            node.OrderNo = orderNo;
-            node.UpdatedAt = DateTimeOffset.UtcNow;
-            return Task.FromResult<NodeEntity?>(Clone(node));
-        }
-    }
-
-    public Task<int> DeleteSelfAsync(long id)
-    {
-        lock (_store.SyncRoot)
-        {
-            var node = _store.Nodes.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (node is null)
-            {
-                return Task.FromResult(0);
-            }
-
-            var now = DateTimeOffset.UtcNow;
-            foreach (var child in _store.Nodes.Where(item => item.ParentId == id && !item.IsDeleted))
-            {
-                child.ParentId = node.ParentId;
-                child.UpdatedAt = now;
-            }
-
-            MarkDeleted(node, now);
-            DeleteRelations(new[] { id }, now);
-
-            var map = _store.MindMaps.FirstOrDefault(item => item.Id == node.MapId && item.RootNodeId == id);
-            if (map is not null)
-            {
-                map.RootNodeId = _store.Nodes.FirstOrDefault(item => item.MapId == node.MapId && item.ParentId is null && !item.IsDeleted)?.Id;
-                map.UpdatedAt = now;
-            }
-
-            return Task.FromResult(1);
-        }
-    }
-
-    public Task<int> DeleteSubtreeAsync(long id)
-    {
-        lock (_store.SyncRoot)
-        {
-            var root = _store.Nodes.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (root is null)
-            {
-                return Task.FromResult(0);
-            }
-
-            var now = DateTimeOffset.UtcNow;
-            var subtreeIds = CollectSubtreeIds(id);
-            var affected = 0;
-            foreach (var node in _store.Nodes.Where(item => subtreeIds.Contains(item.Id) && !item.IsDeleted))
-            {
-                MarkDeleted(node, now);
-                affected++;
-            }
-
-            DeleteRelations(subtreeIds, now);
-
-            var map = _store.MindMaps.FirstOrDefault(item => item.Id == root.MapId && item.RootNodeId.HasValue && subtreeIds.Contains(item.RootNodeId.Value));
-            if (map is not null)
-            {
-                map.RootNodeId = _store.Nodes.FirstOrDefault(item => item.MapId == root.MapId && item.ParentId is null && !item.IsDeleted)?.Id;
-                map.UpdatedAt = now;
-            }
-
-            return Task.FromResult(affected);
-        }
-    }
-
-    private HashSet<long> CollectSubtreeIds(long rootId)
-    {
-        var result = new HashSet<long> { rootId };
-        var changed = true;
-        while (changed)
-        {
-            changed = false;
-            foreach (var child in _store.Nodes.Where(node => node.ParentId.HasValue && result.Contains(node.ParentId.Value) && !node.IsDeleted))
-            {
-                if (result.Add(child.Id))
-                {
-                    changed = true;
-                }
-            }
+            result.Add(ReadNode(reader));
         }
 
         return result;
     }
 
-    private void DeleteRelations(IEnumerable<long> nodeIds, DateTimeOffset now)
+    public async Task<NodeEntity?> GetAsync(long id)
     {
-        var idSet = nodeIds.ToHashSet();
-        foreach (var relation in _store.Relations.Where(item => !item.IsDeleted && (idSet.Contains(item.SourceId) || idSet.Contains(item.TargetId))))
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at
+            FROM node
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadNode(reader) : null;
+    }
+
+    public async Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        if (!await MapExistsAsync(connection, transaction, mapId))
         {
-            relation.IsDeleted = true;
-            relation.DeletedAt = now;
+            throw new InvalidOperationException("Mind map does not exist.");
         }
+
+        if (parentId.HasValue && !await NodeExistsAsync(connection, transaction, mapId, parentId.Value))
+        {
+            throw new InvalidOperationException("Parent node does not exist in the same mind map.");
+        }
+
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO node (map_id, parent_id, title, content, order_no, created_at, updated_at)
+            VALUES (@map_id, @parent_id, @title, @content, @order_no, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("map_id", mapId);
+        command.Parameters.AddWithValue("parent_id", (object?)parentId ?? DBNull.Value);
+        command.Parameters.AddWithValue("title", title);
+        command.Parameters.AddWithValue("content", (object?)content ?? DBNull.Value);
+        command.Parameters.AddWithValue("order_no", orderNo);
+
+        NodeEntity created;
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            if (!await reader.ReadAsync())
+            {
+                throw new InvalidOperationException("Node was not created.");
+            }
+
+            created = ReadNode(reader);
+        }
+
+        await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE mind_map
+            SET root_node_id = COALESCE(root_node_id, @node_id),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @map_id AND is_deleted = FALSE;
+            """,
+            ("map_id", mapId),
+            ("node_id", created.Id));
+
+        await transaction.CommitAsync();
+        return created;
     }
 
-    private static void MarkDeleted(NodeEntity entity, DateTimeOffset now)
+    public async Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo)
     {
-        entity.IsDeleted = true;
-        entity.DeletedAt = now;
-        entity.UpdatedAt = now;
+        if (parentId == id)
+        {
+            return null;
+        }
+
+        await using var connection = await _connectionFactory.OpenAsync();
+        var current = await GetNodeForUpdateAsync(connection, id);
+        if (current is null)
+        {
+            return null;
+        }
+
+        if (parentId.HasValue && !await NodeExistsAsync(connection, null, current.MapId, parentId.Value))
+        {
+            return null;
+        }
+
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE node
+            SET parent_id = @parent_id,
+                title = @title,
+                content = @content,
+                order_no = @order_no,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @id AND is_deleted = FALSE
+            RETURNING id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("parent_id", (object?)parentId ?? DBNull.Value);
+        command.Parameters.AddWithValue("title", title);
+        command.Parameters.AddWithValue("content", (object?)content ?? DBNull.Value);
+        command.Parameters.AddWithValue("order_no", orderNo);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadNode(reader) : null;
     }
 
-    private static NodeEntity Clone(NodeEntity entity)
+    public async Task<int> DeleteSelfAsync(long id)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        var node = await GetNodeForUpdateAsync(connection, id, transaction);
+        if (node is null)
+        {
+            await transaction.RollbackAsync();
+            return 0;
+        }
+
+        await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node
+            SET parent_id = @parent_id,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE parent_id = @id AND is_deleted = FALSE;
+            """,
+            ("id", id),
+            ("parent_id", node.ParentId));
+
+        await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node_relation
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP
+            WHERE is_deleted = FALSE AND (source_id = @id OR target_id = @id);
+            """,
+            ("id", id));
+
+        var affected = await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            ("id", id));
+
+        await RefreshRootNodeAsync(connection, transaction, node.MapId, id);
+        await transaction.CommitAsync();
+        return affected;
+    }
+
+    public async Task<int> DeleteSubtreeAsync(long id)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        var root = await GetNodeForUpdateAsync(connection, id, transaction);
+        if (root is null)
+        {
+            await transaction.RollbackAsync();
+            return 0;
+        }
+
+        await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node_relation
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP
+            WHERE is_deleted = FALSE
+              AND (
+                  source_id IN (
+                      WITH RECURSIVE subtree AS (
+                          SELECT id FROM node WHERE id = @id AND is_deleted = FALSE
+                          UNION ALL
+                          SELECT child.id FROM node child
+                          JOIN subtree parent ON child.parent_id = parent.id
+                          WHERE child.is_deleted = FALSE
+                      )
+                      SELECT id FROM subtree
+                  )
+                  OR target_id IN (
+                      WITH RECURSIVE subtree AS (
+                          SELECT id FROM node WHERE id = @id AND is_deleted = FALSE
+                          UNION ALL
+                          SELECT child.id FROM node child
+                          JOIN subtree parent ON child.parent_id = parent.id
+                          WHERE child.is_deleted = FALSE
+                      )
+                      SELECT id FROM subtree
+                  )
+              );
+            """,
+            ("id", id));
+
+        var affected = await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            WITH RECURSIVE subtree AS (
+                SELECT id FROM node WHERE id = @id AND is_deleted = FALSE
+                UNION ALL
+                SELECT child.id FROM node child
+                JOIN subtree parent ON child.parent_id = parent.id
+                WHERE child.is_deleted = FALSE
+            )
+            UPDATE node
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id IN (SELECT id FROM subtree)
+              AND is_deleted = FALSE;
+            """,
+            ("id", id));
+
+        await RefreshRootNodeAsync(connection, transaction, root.MapId, id);
+        await transaction.CommitAsync();
+        return affected;
+    }
+
+    private static async Task<bool> MapExistsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long mapId)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM mind_map WHERE id = @map_id AND is_deleted = FALSE);",
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("map_id", mapId);
+        return (bool)(await command.ExecuteScalarAsync() ?? false);
+    }
+
+    private static async Task<bool> NodeExistsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, long mapId, long nodeId)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM node WHERE id = @node_id AND map_id = @map_id AND is_deleted = FALSE);",
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("node_id", nodeId);
+        command.Parameters.AddWithValue("map_id", mapId);
+        return (bool)(await command.ExecuteScalarAsync() ?? false);
+    }
+
+    private static async Task<NodeEntity?> GetNodeForUpdateAsync(
+        NpgsqlConnection connection,
+        long id,
+        NpgsqlTransaction? transaction = null)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at
+            FROM node
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("id", id);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadNode(reader) : null;
+    }
+
+    private static async Task RefreshRootNodeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long mapId,
+        long deletedNodeId)
+    {
+        await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE mind_map
+            SET root_node_id = (
+                    SELECT id
+                    FROM node
+                    WHERE map_id = @map_id
+                      AND parent_id IS NULL
+                      AND is_deleted = FALSE
+                    ORDER BY order_no, id
+                    LIMIT 1
+                ),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @map_id
+              AND root_node_id = @deleted_node_id
+              AND is_deleted = FALSE;
+            """,
+            ("map_id", mapId),
+            ("deleted_node_id", deletedNodeId));
+    }
+
+    private static async Task<int> ExecuteAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string sql,
+        params (string Name, object? Value)[] parameters)
+    {
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        foreach (var parameter in parameters)
+        {
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        }
+
+        return await command.ExecuteNonQueryAsync();
+    }
+
+    private static NodeEntity ReadNode(NpgsqlDataReader reader)
     {
         return new NodeEntity
         {
-            Id = entity.Id,
-            MapId = entity.MapId,
-            ParentId = entity.ParentId,
-            Title = entity.Title,
-            Content = entity.Content,
-            OrderNo = entity.OrderNo,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
-            IsDeleted = entity.IsDeleted,
-            DeletedAt = entity.DeletedAt
+            Id = reader.GetInt64(0),
+            MapId = reader.GetInt64(1),
+            ParentId = reader.IsDBNull(2) ? null : reader.GetInt64(2),
+            Title = reader.GetString(3),
+            Content = reader.IsDBNull(4) ? null : reader.GetString(4),
+            OrderNo = reader.GetInt32(5),
+            CreatedAt = reader.GetFieldValue<DateTimeOffset>(6),
+            UpdatedAt = reader.GetFieldValue<DateTimeOffset>(7),
+            IsDeleted = reader.GetBoolean(8),
+            DeletedAt = reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9)
         };
     }
 }

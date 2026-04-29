@@ -23,13 +23,13 @@ public sealed class AiController : ControllerBase
     }
 
     [HttpPost("clean")]
-    public ActionResult<ApiResult<AiCleanResultDto>> Clean(AiCleanRequest request)
+    public async Task<ActionResult<ApiResult<AiCleanResultDto>>> CleanAsync(AiCleanRequest request)
     {
         try
         {
-            return ApiResult<AiCleanResultDto>.Ok(_aiCleanService.Clean(request));
+            return ApiResult<AiCleanResultDto>.Ok(await _aiCleanService.CleanAsync(request));
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
         {
             return BadRequest(ApiResult<AiCleanResultDto>.Fail(ex.Message));
         }

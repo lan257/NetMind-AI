@@ -11,7 +11,7 @@ internal static class SwaggerDocumentFactory
             {
                 title = "NetMind API",
                 version = "v1",
-                description = "Mind map CRUD, import/export and P1.1 AI cleaning API."
+                description = "Mind map CRUD, import/export and P1.2 configured database and AI cleaning API."
             },
             paths = new Dictionary<string, object>
             {
@@ -29,8 +29,8 @@ internal static class SwaggerDocumentFactory
                 ["/api/mind-map-transfer/structure"] = Path("Import one full mind map from a structured request", "post"),
                 ["/api/mind-map-transfer/file"] = Path("Import one full mind map from an uploaded JSON file", "post"),
                 ["/api/mind-map-transfer/template"] = Path("Download a JSON import template", "get"),
-                ["/api/ai/models"] = Path("List configured AI model placeholders", "get"),
-                ["/api/ai/clean"] = Path("Clean natural language into the standard mind map transfer structure", "post"),
+                ["/api/ai/models"] = Path("List configured AI cleaning models", "get"),
+                ["/api/ai/clean"] = Path("Clean natural language through DeepSeek or Ollama into the standard mind map transfer structure", "post"),
                 ["/api/system/health"] = Path("Get system health", "get")
             }
         };

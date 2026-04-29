@@ -78,7 +78,12 @@ async function api(path, options = {}) {
 
   const response = await fetch(path, { ...options, headers });
   const text = await response.text();
-  const result = text ? JSON.parse(text) : {};
+  let result = {};
+  try {
+    result = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `Request failed: ${response.status}`);
+  }
 
   if (!response.ok || !result.success) {
     throw new Error(result.message || `Request failed: ${response.status}`);
@@ -493,7 +498,7 @@ onMounted(async () => {
   <main class="workspace">
     <header class="topbar">
       <div>
-        <p class="eyebrow">P1.1</p>
+        <p class="eyebrow">P1.2</p>
         <h1>NetMind</h1>
       </div>
       <div class="topbar-actions">

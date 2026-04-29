@@ -1,136 +1,176 @@
 using NetMind.Models.Entities;
 using NetMind.Repository.Interfaces;
+using Npgsql;
 
 namespace NetMind.Repository.Implementations;
 
 public sealed class NodeRelationRepository : INodeRelationRepository
 {
-    private readonly InMemoryMindMapStore _store;
+    private readonly PostgresConnectionFactory _connectionFactory;
 
-    public NodeRelationRepository(InMemoryMindMapStore store)
+    public NodeRelationRepository(PostgresConnectionFactory connectionFactory)
     {
-        _store = store;
+        _connectionFactory = connectionFactory;
     }
 
-    public Task<IReadOnlyList<NodeRelationEntity>> ListByMapAsync(long mapId)
+    public async Task<IReadOnlyList<NodeRelationEntity>> ListByMapAsync(long mapId)
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, source_id, target_id, relation_type, weight, map_id, created_at, is_deleted, deleted_at
+            FROM node_relation
+            WHERE map_id = @map_id AND is_deleted = FALSE
+            ORDER BY id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("map_id", mapId);
+
+        var result = new List<NodeRelationEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            return Task.FromResult<IReadOnlyList<NodeRelationEntity>>(
-                _store.Relations
-                    .Where(relation => relation.MapId == mapId && !relation.IsDeleted)
-                    .OrderBy(relation => relation.Id)
-                    .Select(Clone)
-                    .ToList());
+            result.Add(ReadRelation(reader));
         }
+
+        return result;
     }
 
-    public Task<NodeRelationEntity?> GetAsync(long id)
+    public async Task<NodeRelationEntity?> GetAsync(long id)
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, source_id, target_id, relation_type, weight, map_id, created_at, is_deleted, deleted_at
+            FROM node_relation
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadRelation(reader) : null;
+    }
+
+    public async Task<NodeRelationEntity> CreateAsync(long sourceId, long targetId, string relationType, double weight, long mapId)
+    {
+        if (sourceId == targetId)
         {
-            var relation = _store.Relations.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            return Task.FromResult(relation is null ? null : Clone(relation));
+            throw new InvalidOperationException("Source and target node cannot be the same.");
         }
-    }
 
-    public Task<NodeRelationEntity> CreateAsync(long sourceId, long targetId, string relationType, double weight, long mapId)
-    {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        var endpointCount = await CountExistingEndpointsAsync(connection, mapId, sourceId, targetId);
+        if (endpointCount != 2)
         {
-            if (sourceId == targetId)
-            {
-                throw new InvalidOperationException("Source and target node cannot be the same.");
-            }
-
-            var sourceExists = _store.Nodes.Any(node => node.Id == sourceId && node.MapId == mapId && !node.IsDeleted);
-            var targetExists = _store.Nodes.Any(node => node.Id == targetId && node.MapId == mapId && !node.IsDeleted);
-            if (!sourceExists || !targetExists)
-            {
-                throw new InvalidOperationException("Source and target node must exist in the same mind map.");
-            }
-
-            var entity = new NodeRelationEntity
-            {
-                Id = _store.NextRelationId(),
-                SourceId = sourceId,
-                TargetId = targetId,
-                RelationType = relationType.Trim(),
-                Weight = weight,
-                MapId = mapId,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-
-            _store.Relations.Add(entity);
-            return Task.FromResult(Clone(entity));
+            throw new InvalidOperationException("Source and target node must exist in the same mind map.");
         }
-    }
 
-    public Task<NodeRelationEntity?> UpdateAsync(long id, string relationType, double weight)
-    {
-        lock (_store.SyncRoot)
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO node_relation (source_id, target_id, relation_type, weight, map_id, created_at)
+            VALUES (@source_id, @target_id, @relation_type, @weight, @map_id, CURRENT_TIMESTAMP)
+            RETURNING id, source_id, target_id, relation_type, weight, map_id, created_at, is_deleted, deleted_at;
+            """,
+            connection);
+        command.Parameters.AddWithValue("source_id", sourceId);
+        command.Parameters.AddWithValue("target_id", targetId);
+        command.Parameters.AddWithValue("relation_type", relationType);
+        command.Parameters.AddWithValue("weight", weight);
+        command.Parameters.AddWithValue("map_id", mapId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
         {
-            var relation = _store.Relations.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (relation is null)
-            {
-                return Task.FromResult<NodeRelationEntity?>(null);
-            }
-
-            relation.RelationType = relationType.Trim();
-            relation.Weight = weight;
-            return Task.FromResult<NodeRelationEntity?>(Clone(relation));
+            throw new InvalidOperationException("Node relation was not created.");
         }
+
+        return ReadRelation(reader);
     }
 
-    public Task<int> DeleteAsync(long id)
+    public async Task<NodeRelationEntity?> UpdateAsync(long id, string relationType, double weight)
     {
-        lock (_store.SyncRoot)
-        {
-            var relation = _store.Relations.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (relation is null)
-            {
-                return Task.FromResult(0);
-            }
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE node_relation
+            SET relation_type = @relation_type,
+                weight = @weight
+            WHERE id = @id AND is_deleted = FALSE
+            RETURNING id, source_id, target_id, relation_type, weight, map_id, created_at, is_deleted, deleted_at;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("relation_type", relationType);
+        command.Parameters.AddWithValue("weight", weight);
 
-            MarkDeleted(relation);
-            return Task.FromResult(1);
-        }
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadRelation(reader) : null;
     }
 
-    public Task<int> DeleteByNodeAsync(long nodeId)
+    public async Task<int> DeleteAsync(long id)
     {
-        lock (_store.SyncRoot)
-        {
-            var affected = 0;
-            foreach (var relation in _store.Relations.Where(item => !item.IsDeleted && (item.SourceId == nodeId || item.TargetId == nodeId)))
-            {
-                MarkDeleted(relation);
-                affected++;
-            }
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE node_relation
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
 
-            return Task.FromResult(affected);
-        }
+        return await command.ExecuteNonQueryAsync();
     }
 
-    private static void MarkDeleted(NodeRelationEntity entity)
+    public async Task<int> DeleteByNodeAsync(long nodeId)
     {
-        entity.IsDeleted = true;
-        entity.DeletedAt = DateTimeOffset.UtcNow;
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE node_relation
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP
+            WHERE is_deleted = FALSE AND (source_id = @node_id OR target_id = @node_id);
+            """,
+            connection);
+        command.Parameters.AddWithValue("node_id", nodeId);
+
+        return await command.ExecuteNonQueryAsync();
     }
 
-    private static NodeRelationEntity Clone(NodeRelationEntity entity)
+    private static async Task<long> CountExistingEndpointsAsync(NpgsqlConnection connection, long mapId, long sourceId, long targetId)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(*)
+            FROM node
+            WHERE map_id = @map_id
+              AND id IN (@source_id, @target_id)
+              AND is_deleted = FALSE;
+            """,
+            connection);
+        command.Parameters.AddWithValue("map_id", mapId);
+        command.Parameters.AddWithValue("source_id", sourceId);
+        command.Parameters.AddWithValue("target_id", targetId);
+
+        return (long)(await command.ExecuteScalarAsync() ?? 0L);
+    }
+
+    private static NodeRelationEntity ReadRelation(NpgsqlDataReader reader)
     {
         return new NodeRelationEntity
         {
-            Id = entity.Id,
-            SourceId = entity.SourceId,
-            TargetId = entity.TargetId,
-            RelationType = entity.RelationType,
-            Weight = entity.Weight,
-            MapId = entity.MapId,
-            CreatedAt = entity.CreatedAt,
-            IsDeleted = entity.IsDeleted,
-            DeletedAt = entity.DeletedAt
+            Id = reader.GetInt64(0),
+            SourceId = reader.GetInt64(1),
+            TargetId = reader.GetInt64(2),
+            RelationType = reader.GetString(3),
+            Weight = reader.GetDouble(4),
+            MapId = reader.GetInt64(5),
+            CreatedAt = reader.GetFieldValue<DateTimeOffset>(6),
+            IsDeleted = reader.GetBoolean(7),
+            DeletedAt = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8)
         };
     }
 }

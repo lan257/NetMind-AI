@@ -3,9 +3,6 @@ using NetMind.Repository.Interfaces;
 
 namespace NetMind.Repository.Implementations;
 
-/// <summary>
-/// In-memory repository used before database persistence is introduced.
-/// </summary>
 public sealed class ProjectStatusRepository : IProjectStatusRepository
 {
     /// <inheritdoc />
@@ -14,7 +11,7 @@ public sealed class ProjectStatusRepository : IProjectStatusRepository
         var status = new ProjectStatusViewModel
         {
             ProjectName = "NetMind",
-            Phase = "P1.1",
+            Phase = "P1.2",
             Runtime = ".NET 8",
             Frontend = "Vue3/HTML5 shell"
         };

@@ -6,5 +6,5 @@ public interface IAiCleanService
 {
     IReadOnlyList<AiModelOptionDto> ListModels();
 
-    AiCleanResultDto Clean(AiCleanRequest request);
+    Task<AiCleanResultDto> CleanAsync(AiCleanRequest request);
 }

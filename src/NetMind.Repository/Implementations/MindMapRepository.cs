@@ -1,149 +1,193 @@
 using NetMind.Models.Entities;
 using NetMind.Repository.Interfaces;
+using Npgsql;
 
 namespace NetMind.Repository.Implementations;
 
 public sealed class MindMapRepository : IMindMapRepository
 {
-    private readonly InMemoryMindMapStore _store;
+    private readonly PostgresConnectionFactory _connectionFactory;
 
-    public MindMapRepository(InMemoryMindMapStore store)
+    public MindMapRepository(PostgresConnectionFactory connectionFactory)
     {
-        _store = store;
+        _connectionFactory = connectionFactory;
     }
 
-    public Task<IReadOnlyList<MindMapEntity>> ListAsync()
+    public async Task<IReadOnlyList<MindMapEntity>> ListAsync()
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, title, root_node_id, created_at, updated_at, is_deleted, deleted_at
+            FROM mind_map
+            WHERE is_deleted = FALSE
+            ORDER BY id;
+            """,
+            connection);
+
+        var result = new List<MindMapEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            return Task.FromResult<IReadOnlyList<MindMapEntity>>(
-                _store.MindMaps
-                    .Where(map => !map.IsDeleted)
-                    .OrderBy(map => map.Id)
-                    .Select(Clone)
-                    .ToList());
+            result.Add(ReadMindMap(reader));
         }
+
+        return result;
     }
 
-    public Task<MindMapEntity?> GetAsync(long id)
+    public async Task<MindMapEntity?> GetAsync(long id)
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT id, title, root_node_id, created_at, updated_at, is_deleted, deleted_at
+            FROM mind_map
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadMindMap(reader) : null;
+    }
+
+    public async Task<MindMapEntity> CreateAsync(string title)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO mind_map (title, created_at, updated_at)
+            VALUES (@title, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, title, root_node_id, created_at, updated_at, is_deleted, deleted_at;
+            """,
+            connection);
+        command.Parameters.AddWithValue("title", title);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
         {
-            var map = _store.MindMaps.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            return Task.FromResult(map is null ? null : Clone(map));
+            throw new InvalidOperationException("Mind map was not created.");
         }
+
+        return ReadMindMap(reader);
     }
 
-    public Task<MindMapEntity> CreateAsync(string title)
+    public async Task<MindMapEntity?> UpdateAsync(long id, string title, long? rootNodeId)
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        if (rootNodeId.HasValue && !await NodeExistsAsync(connection, id, rootNodeId.Value))
         {
-            var now = DateTimeOffset.UtcNow;
-            var entity = new MindMapEntity
-            {
-                Id = _store.NextMapId(),
-                Title = title.Trim(),
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-
-            _store.MindMaps.Add(entity);
-            return Task.FromResult(Clone(entity));
+            return null;
         }
+
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE mind_map
+            SET title = @title,
+                root_node_id = @root_node_id,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @id AND is_deleted = FALSE
+            RETURNING id, title, root_node_id, created_at, updated_at, is_deleted, deleted_at;
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("title", title);
+        command.Parameters.AddWithValue("root_node_id", (object?)rootNodeId ?? DBNull.Value);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? ReadMindMap(reader) : null;
     }
 
-    public Task<MindMapEntity?> UpdateAsync(long id, string title, long? rootNodeId)
+    public async Task<int> DeleteAsync(long id, bool cascade)
     {
-        lock (_store.SyncRoot)
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        var affected = await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE mind_map
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @id AND is_deleted = FALSE;
+            """,
+            ("id", id));
+
+        if (affected == 0)
         {
-            var map = _store.MindMaps.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (map is null)
-            {
-                return Task.FromResult<MindMapEntity?>(null);
-            }
-
-            if (rootNodeId.HasValue && !_store.Nodes.Any(node => node.Id == rootNodeId.Value && node.MapId == id && !node.IsDeleted))
-            {
-                return Task.FromResult<MindMapEntity?>(null);
-            }
-
-            map.Title = title.Trim();
-            map.RootNodeId = rootNodeId;
-            map.UpdatedAt = DateTimeOffset.UtcNow;
-            return Task.FromResult<MindMapEntity?>(Clone(map));
+            await transaction.RollbackAsync();
+            return 0;
         }
-    }
 
-    public Task<int> DeleteAsync(long id, bool cascade)
-    {
-        lock (_store.SyncRoot)
+        if (cascade)
         {
-            var now = DateTimeOffset.UtcNow;
-            var affected = 0;
-            var map = _store.MindMaps.FirstOrDefault(item => item.Id == id && !item.IsDeleted);
-            if (map is null)
-            {
-                return Task.FromResult(0);
-            }
+            affected += await ExecuteAsync(
+                connection,
+                transaction,
+                """
+                UPDATE node
+                SET is_deleted = TRUE,
+                    deleted_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE map_id = @id AND is_deleted = FALSE;
+                """,
+                ("id", id));
 
-            MarkDeleted(map, now);
-            affected++;
-
-            if (cascade)
-            {
-                var nodeIds = _store.Nodes
-                    .Where(node => node.MapId == id && !node.IsDeleted)
-                    .Select(node => node.Id)
-                    .ToHashSet();
-
-                foreach (var node in _store.Nodes.Where(node => nodeIds.Contains(node.Id) && !node.IsDeleted))
-                {
-                    MarkDeleted(node, now);
-                    affected++;
-                }
-
-                foreach (var relation in _store.Relations.Where(relation => relation.MapId == id && !relation.IsDeleted))
-                {
-                    MarkDeleted(relation, now);
-                    affected++;
-                }
-            }
-
-            return Task.FromResult(affected);
+            affected += await ExecuteAsync(
+                connection,
+                transaction,
+                """
+                UPDATE node_relation
+                SET is_deleted = TRUE,
+                    deleted_at = CURRENT_TIMESTAMP
+                WHERE map_id = @id AND is_deleted = FALSE;
+                """,
+                ("id", id));
         }
+
+        await transaction.CommitAsync();
+        return affected;
     }
 
-    private static void MarkDeleted(MindMapEntity entity, DateTimeOffset now)
+    private static async Task<bool> NodeExistsAsync(NpgsqlConnection connection, long mapId, long nodeId)
     {
-        entity.IsDeleted = true;
-        entity.DeletedAt = now;
-        entity.UpdatedAt = now;
+        await using var command = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM node WHERE id = @node_id AND map_id = @map_id AND is_deleted = FALSE);",
+            connection);
+        command.Parameters.AddWithValue("node_id", nodeId);
+        command.Parameters.AddWithValue("map_id", mapId);
+
+        return (bool)(await command.ExecuteScalarAsync() ?? false);
     }
 
-    private static void MarkDeleted(NodeEntity entity, DateTimeOffset now)
+    private static async Task<int> ExecuteAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string sql,
+        params (string Name, object? Value)[] parameters)
     {
-        entity.IsDeleted = true;
-        entity.DeletedAt = now;
-        entity.UpdatedAt = now;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        foreach (var parameter in parameters)
+        {
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        }
+
+        return await command.ExecuteNonQueryAsync();
     }
 
-    private static void MarkDeleted(NodeRelationEntity entity, DateTimeOffset now)
-    {
-        entity.IsDeleted = true;
-        entity.DeletedAt = now;
-    }
-
-    private static MindMapEntity Clone(MindMapEntity entity)
+    private static MindMapEntity ReadMindMap(NpgsqlDataReader reader)
     {
         return new MindMapEntity
         {
-            Id = entity.Id,
-            Title = entity.Title,
-            RootNodeId = entity.RootNodeId,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
-            IsDeleted = entity.IsDeleted,
-            DeletedAt = entity.DeletedAt
+            Id = reader.GetInt64(0),
+            Title = reader.GetString(1),
+            RootNodeId = reader.IsDBNull(2) ? null : reader.GetInt64(2),
+            CreatedAt = reader.GetFieldValue<DateTimeOffset>(3),
+            UpdatedAt = reader.GetFieldValue<DateTimeOffset>(4),
+            IsDeleted = reader.GetBoolean(5),
+            DeletedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6)
         };
     }
 }
