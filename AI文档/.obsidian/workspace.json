@@ -20,8 +20,19 @@
               "icon": "lucide-file",
               "title": "NET开发规范"
             }
+          },
+          {
+            "id": "2c13a22aa77fb0fb",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "新标签页"
+            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -183,8 +194,9 @@
       "bases:新建数据库": false
     }
   },
-  "active": "892d66b4731e3898",
+  "active": "2c13a22aa77fb0fb",
   "lastOpenFiles": [
+    "NET开发规范.md",
     "项目基础说明.md",
     "开发日志.md",
     "Smoke/P1.2-Smoke.ps1",
@@ -197,7 +209,6 @@
     "SQL/P0.3_AddLogicalDelete.sql",
     "SQL/Init.sql",
     "SQL",
-    "NET开发规范.md",
     "项目说明.md",
     "阶段开发与人工验收细化模板.md",
     "金析为证_NET开发规范_v1.0_20260317.md",

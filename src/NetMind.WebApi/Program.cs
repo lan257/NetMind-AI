@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
     string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
 {
-    builder.WebHost.UseUrls("http://127.0.0.1:5119");
+    builder.WebHost.UseUrls("http://0.0.0.0:5119", "http://[::]:5119");
 }
 
 builder.Services.AddControllers();
@@ -82,7 +82,7 @@ app.MapGet("/swagger", () => Results.Content(SwaggerDocumentFactory.CreateHtml()
 app.MapGet("/swagger/index.html", () => Results.Content(SwaggerDocumentFactory.CreateHtml(), "text/html; charset=utf-8"));
 if (app.Environment.IsDevelopment())
 {
-    app.MapGet("/", () => Results.Redirect("http://127.0.0.1:5173"));
+    app.MapGet("/", () => Results.Redirect("http://localhost:5173"));
 }
 
 app.Run();
@@ -90,7 +90,7 @@ app.Run();
 static void StartFrontendDevServer(WebApplication app)
 {
     const int frontendPort = 5173;
-    if (IsTcpPortOpen("127.0.0.1", frontendPort))
+    if (IsFrontendDevServerRunning(frontendPort))
     {
         return;
     }
@@ -156,6 +156,11 @@ static void StartFrontendDevServer(WebApplication app)
     {
         app.Logger.LogWarning(ex, "Failed to start the frontend dev server.");
     }
+}
+
+static bool IsFrontendDevServerRunning(int port)
+{
+    return IsTcpPortOpen("127.0.0.1", port) || IsTcpPortOpen("::1", port);
 }
 
 static bool IsTcpPortOpen(string host, int port)
