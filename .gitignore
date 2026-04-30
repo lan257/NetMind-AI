@@ -9,3 +9,5 @@
 .nuget-cache/
 .npm-cache/
 npm-debug.log*
+src/NetMind.WebApi/Logs/
+*.log
