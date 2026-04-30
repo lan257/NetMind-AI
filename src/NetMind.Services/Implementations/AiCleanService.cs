@@ -1,6 +1,8 @@
 ﻿using System.Net.Http.Headers;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using NetMind.Common.Logging;
 using NetMind.Models.Dtos;
 using NetMind.Services.Configurations;
 using NetMind.Services.Interfaces;
@@ -18,16 +20,18 @@ public sealed class AiCleanService : IAiCleanService
 
     private readonly AiCleanOptions _options;
     private readonly HttpClient _httpClient;
+    private readonly IAppLogger _logger;
     private readonly string _systemPrompt;
     private readonly string _userPromptTemplate;
     private readonly string _requirementPromptTemplate;
     private readonly string _contextChatPromptTemplate;
     private readonly string _contextCompressionPromptTemplate;
 
-    public AiCleanService(AiCleanOptions options, HttpClient httpClient)
+    public AiCleanService(AiCleanOptions options, HttpClient httpClient, IAppLogger logger)
     {
         _options = options;
         _httpClient = httpClient;
+        _logger = logger;
         _systemPrompt = JoinPromptLines(options.Prompt.SystemPromptLines, "AiClean:Prompt:SystemPromptLines");
         _userPromptTemplate = JoinPromptLines(options.Prompt.UserPromptTemplateLines, "AiClean:Prompt:UserPromptTemplateLines");
         _requirementPromptTemplate = JoinPromptLines(options.Prompt.RequirementPromptTemplateLines, "AiClean:Prompt:RequirementPromptTemplateLines");
@@ -58,7 +62,7 @@ public sealed class AiCleanService : IAiCleanService
     {
         if (string.IsNullOrWhiteSpace(request.NaturalLanguage))
         {
-            throw new ArgumentException("Natural language input is required.", nameof(request));
+            throw new ArgumentException("请输入自然语言内容。", nameof(request));
         }
 
         var prompt = BuildUserPrompt(request.NaturalLanguage);
@@ -80,7 +84,7 @@ public sealed class AiCleanService : IAiCleanService
                     Transfer = transfer,
                     Warnings = lastError is null
                         ? Array.Empty<string>()
-                        : new[] { $"Primary model failed and fallback was used: {lastError.Message}" }
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
                 };
             }
             catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
@@ -89,14 +93,14 @@ public sealed class AiCleanService : IAiCleanService
             }
         }
 
-        throw lastError ?? new InvalidOperationException("No enabled AI cleaning model is configured.");
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
     }
 
     public async Task<AiContextChatResultDto> ChatWithContextAsync(AiContextChatRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Message))
         {
-            throw new ArgumentException("Message input is required.", nameof(request));
+            throw new ArgumentException("请输入对话内容。", nameof(request));
         }
 
         var candidates = SelectModels(request.ModelId);
@@ -119,7 +123,7 @@ public sealed class AiCleanService : IAiCleanService
                     WasContextCompressed = contextResult.WasCompressed,
                     Warnings = lastError is null
                         ? Array.Empty<string>()
-                        : new[] { $"Primary model failed and fallback was used: {lastError.Message}" }
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
                 };
             }
             catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
@@ -128,14 +132,14 @@ public sealed class AiCleanService : IAiCleanService
             }
         }
 
-        throw lastError ?? new InvalidOperationException("No enabled AI cleaning model is configured.");
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
     }
 
     public async Task<AiRequirementStructureResultDto> StructureRequirementAsync(AiRequirementStructureRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Requirement))
         {
-            throw new ArgumentException("Requirement input is required.", nameof(request));
+            throw new ArgumentException("请输入需求内容。", nameof(request));
         }
 
         var candidates = SelectModels(request.ModelId);
@@ -159,7 +163,7 @@ public sealed class AiCleanService : IAiCleanService
                     Transfer = transfer,
                     Warnings = lastError is null
                         ? Array.Empty<string>()
-                        : new[] { $"Primary model failed and fallback was used: {lastError.Message}" }
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
                 };
             }
             catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
@@ -168,7 +172,7 @@ public sealed class AiCleanService : IAiCleanService
             }
         }
 
-        throw lastError ?? new InvalidOperationException("No enabled AI cleaning model is configured.");
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
     }
 
     private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId)
@@ -182,7 +186,7 @@ public sealed class AiCleanService : IAiCleanService
                 return new[] { requested };
             }
 
-            throw new ArgumentException($"AI model '{requestedModelId}' is not configured or enabled.", nameof(requestedModelId));
+            throw new ArgumentException($"AI 模型 '{requestedModelId}' 未配置或未启用。", nameof(requestedModelId));
         }
 
         return _options.Models
@@ -196,13 +200,14 @@ public sealed class AiCleanService : IAiCleanService
 
     private async Task<string> CallOpenAiCompatibleAsync(AiModelOptions model, string prompt)
     {
+        var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Post, model.Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         var apiKey = ResolveApiKey(model);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException($"AI model '{model.Id}' requires an API key.");
+            throw new InvalidOperationException($"AI 模型 '{model.Id}' 需要配置 API Key。");
         }
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
@@ -221,9 +226,11 @@ public sealed class AiCleanService : IAiCleanService
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(model.TimeoutSeconds, 1)));
         using var response = await _httpClient.SendAsync(request, timeout.Token);
         var body = await response.Content.ReadAsStringAsync(timeout.Token);
+        stopwatch.Stop();
+        LogAiApiCall(model, response.StatusCode, stopwatch.ElapsedMilliseconds);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"AI model '{model.Id}' request failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
+            throw new InvalidOperationException($"AI 模型 '{model.Id}' 请求失败：{(int)response.StatusCode} {response.ReasonPhrase}。");
         }
 
         using var document = JsonDocument.Parse(body);
@@ -233,11 +240,12 @@ public sealed class AiCleanService : IAiCleanService
             .GetProperty("content")
             .GetString();
 
-        return content ?? throw new InvalidOperationException($"AI model '{model.Id}' returned an empty response.");
+        return content ?? throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回内容为空。");
     }
 
     private async Task<string> CallOllamaAsync(AiModelOptions model, string prompt)
     {
+        var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Post, model.Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Content = JsonContent(new
@@ -256,9 +264,11 @@ public sealed class AiCleanService : IAiCleanService
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(model.TimeoutSeconds, 1)));
         using var response = await _httpClient.SendAsync(request, timeout.Token);
         var body = await response.Content.ReadAsStringAsync(timeout.Token);
+        stopwatch.Stop();
+        LogAiApiCall(model, response.StatusCode, stopwatch.ElapsedMilliseconds);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"AI model '{model.Id}' request failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
+            throw new InvalidOperationException($"AI 模型 '{model.Id}' 请求失败：{(int)response.StatusCode} {response.ReasonPhrase}。");
         }
 
         using var document = JsonDocument.Parse(body);
@@ -267,7 +277,7 @@ public sealed class AiCleanService : IAiCleanService
             .GetProperty("content")
             .GetString();
 
-        return content ?? throw new InvalidOperationException($"AI model '{model.Id}' returned an empty response.");
+        return content ?? throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回内容为空。");
     }
 
     private Task<string> CallModelAsync(AiModelOptions model, string prompt)
@@ -281,7 +291,7 @@ public sealed class AiCleanService : IAiCleanService
     {
         var json = StripMarkdownFence(content.Trim());
         var transfer = JsonSerializer.Deserialize<MindMapTransferDto>(json, JsonOptions);
-        return transfer ?? throw new InvalidOperationException("AI response cannot be parsed as a mind map transfer structure.");
+        return transfer ?? throw new InvalidOperationException("AI 返回内容无法解析为导图结构体。");
     }
 
     private static string ParseContextChatReply(string content)
@@ -291,28 +301,28 @@ public sealed class AiCleanService : IAiCleanService
         if (document.RootElement.ValueKind != JsonValueKind.Object ||
             !document.RootElement.TryGetProperty("reply", out var reply))
         {
-            throw new InvalidOperationException("AI chat response must contain a reply field.");
+            throw new InvalidOperationException("AI 对话返回必须包含 reply 字段。");
         }
 
         return reply.GetString()?.Trim()
-            ?? throw new InvalidOperationException("AI chat response reply is empty.");
+            ?? throw new InvalidOperationException("AI 对话返回的 reply 为空。");
     }
 
     private static void ValidateTransfer(MindMapTransferDto transfer)
     {
         if (!string.Equals(transfer.SchemaVersion, SchemaVersion, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException($"AI response schemaVersion must be '{SchemaVersion}'.");
+            throw new InvalidOperationException($"AI 返回的 schemaVersion 必须为 '{SchemaVersion}'。");
         }
 
         if (string.IsNullOrWhiteSpace(transfer.Title))
         {
-            throw new InvalidOperationException("AI response title is required.");
+            throw new InvalidOperationException("AI 返回内容必须包含标题。");
         }
 
         if (transfer.Nodes.Count == 0)
         {
-            throw new InvalidOperationException("AI response must contain at least one node.");
+            throw new InvalidOperationException("AI 返回内容至少需要包含一个节点。");
         }
 
         var clientIds = new HashSet<string>(StringComparer.Ordinal);
@@ -320,12 +330,12 @@ public sealed class AiCleanService : IAiCleanService
         {
             if (string.IsNullOrWhiteSpace(node.ClientId) || string.IsNullOrWhiteSpace(node.Title))
             {
-                throw new InvalidOperationException("AI response nodes must include clientId and title.");
+                throw new InvalidOperationException("AI 返回的节点必须包含 clientId 和标题。");
             }
 
             if (!clientIds.Add(node.ClientId.Trim()))
             {
-                throw new InvalidOperationException($"AI response contains duplicate node clientId '{node.ClientId}'.");
+                throw new InvalidOperationException($"AI 返回内容包含重复节点 clientId：'{node.ClientId}'。");
             }
         }
 
@@ -333,7 +343,7 @@ public sealed class AiCleanService : IAiCleanService
         {
             if (!clientIds.Contains(node.ParentClientId!.Trim()))
             {
-                throw new InvalidOperationException($"AI response references missing parent node '{node.ParentClientId}'.");
+                throw new InvalidOperationException($"AI 返回内容引用了不存在的父节点：'{node.ParentClientId}'。");
             }
         }
 
@@ -341,22 +351,22 @@ public sealed class AiCleanService : IAiCleanService
         {
             if (string.IsNullOrWhiteSpace(relation.SourceClientId) || string.IsNullOrWhiteSpace(relation.TargetClientId))
             {
-                throw new InvalidOperationException("AI response relation endpoints are required.");
+                throw new InvalidOperationException("AI 返回的关联必须包含源端点和目标端点。");
             }
 
             if (!clientIds.Contains(relation.SourceClientId.Trim()) || !clientIds.Contains(relation.TargetClientId.Trim()))
             {
-                throw new InvalidOperationException("AI response relation endpoints must exist in nodes.");
+                throw new InvalidOperationException("AI 返回的关联端点必须存在于节点列表中。");
             }
 
             if (string.Equals(relation.SourceClientId.Trim(), relation.TargetClientId.Trim(), StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("AI response relation source and target cannot be the same.");
+                throw new InvalidOperationException("AI 返回的关联源节点和目标节点不能相同。");
             }
 
             if (string.IsNullOrWhiteSpace(relation.RelationType) || relation.Weight < 0)
             {
-                throw new InvalidOperationException("AI response relation type is required and weight must be non-negative.");
+                throw new InvalidOperationException("AI 返回的关联类型不能为空，权重不能为负数。");
             }
         }
     }
@@ -401,7 +411,7 @@ public sealed class AiCleanService : IAiCleanService
         var compressed = ParseContextSummary(await CallModelAsync(model, prompt));
         if (string.IsNullOrWhiteSpace(compressed))
         {
-            throw new InvalidOperationException($"AI model '{model.Id}' returned an empty context summary.");
+            throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回的上下文摘要为空。");
         }
 
         return (compressed, true);
@@ -435,7 +445,7 @@ public sealed class AiCleanService : IAiCleanService
 
         if (cleaned.Length == 0)
         {
-            throw new InvalidOperationException($"{configPath} must be configured.");
+            throw new InvalidOperationException($"必须配置 {configPath}。");
         }
 
         return string.Join("\n", cleaned);
@@ -487,5 +497,17 @@ public sealed class AiCleanService : IAiCleanService
             Status = model.Enabled ? "enabled" : "disabled",
             Notes = model.Notes
         };
+    }
+
+    private void LogAiApiCall(AiModelOptions model, System.Net.HttpStatusCode statusCode, long elapsedMs)
+    {
+        _logger.Info("AI API 调用", "AI 模型接口调用完成。", new Dictionary<string, object?>
+        {
+            ["ModelId"] = model.Id,
+            ["Provider"] = model.Provider,
+            ["Endpoint"] = model.Endpoint,
+            ["StatusCode"] = (int)statusCode,
+            ["ElapsedMs"] = elapsedMs
+        });
     }
 }

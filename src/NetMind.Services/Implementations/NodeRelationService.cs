@@ -30,7 +30,7 @@ public sealed class NodeRelationService : INodeRelationService
         var relationType = RequireText(request.RelationType, nameof(request.RelationType));
         if (request.Weight < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(request.Weight), "Weight must be greater than or equal to 0.");
+            throw new ArgumentOutOfRangeException(nameof(request.Weight), "权重必须大于或等于 0。");
         }
 
         return ToDto(await _repository.CreateAsync(request.SourceId, request.TargetId, relationType, request.Weight, request.MapId));
@@ -41,7 +41,7 @@ public sealed class NodeRelationService : INodeRelationService
         var relationType = RequireText(request.RelationType, nameof(request.RelationType));
         if (request.Weight < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(request.Weight), "Weight must be greater than or equal to 0.");
+            throw new ArgumentOutOfRangeException(nameof(request.Weight), "权重必须大于或等于 0。");
         }
 
         var entity = await _repository.UpdateAsync(id, relationType, request.Weight);
@@ -64,7 +64,7 @@ public sealed class NodeRelationService : INodeRelationService
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException($"{name} is required.", name);
+            throw new ArgumentException($"{name} 不能为空。", name);
         }
 
         return value.Trim();

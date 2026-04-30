@@ -26,7 +26,7 @@ public sealed class NodesController : ControllerBase
     public async Task<ActionResult<ApiResult<NodeDto>>> GetAsync(long id)
     {
         var node = await _nodeService.GetAsync(id);
-        return node is null ? NotFound(ApiResult<NodeDto>.Fail("Node not found.")) : ApiResult<NodeDto>.Ok(node);
+        return node is null ? NotFound(ApiResult<NodeDto>.Fail("节点不存在。")) : ApiResult<NodeDto>.Ok(node);
     }
 
     [HttpPost]
@@ -49,7 +49,7 @@ public sealed class NodesController : ControllerBase
         try
         {
             var updated = await _nodeService.UpdateAsync(id, request);
-            return updated is null ? NotFound(ApiResult<NodeDto>.Fail("Node or parent node not found.")) : ApiResult<NodeDto>.Ok(updated);
+            return updated is null ? NotFound(ApiResult<NodeDto>.Fail("节点或父节点不存在。")) : ApiResult<NodeDto>.Ok(updated);
         }
         catch (ArgumentException ex)
         {
@@ -61,13 +61,13 @@ public sealed class NodesController : ControllerBase
     public async Task<ActionResult<ApiResult<DeleteResultDto>>> DeleteSelfAsync(long id)
     {
         var result = await _nodeService.DeleteSelfAsync(id);
-        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("Node not found."));
+        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("节点不存在。"));
     }
 
     [HttpDelete("{id:long}/subtree")]
     public async Task<ActionResult<ApiResult<DeleteResultDto>>> DeleteSubtreeAsync(long id)
     {
         var result = await _nodeService.DeleteSubtreeAsync(id);
-        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("Node not found."));
+        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("节点不存在。"));
     }
 }

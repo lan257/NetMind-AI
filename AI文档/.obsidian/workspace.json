@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "项目必读.md",
+                "file": "开发日志/P1开发日志.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "项目必读"
+              "title": "P1开发日志"
             }
           }
         ],
@@ -200,8 +200,8 @@
   },
   "active": "2c13a22aa77fb0fb",
   "lastOpenFiles": [
-    "开发规范.md",
     "项目必读.md",
+    "开发规范.md",
     "NET开发规范.md",
     "项目基础说明.md",
     "开发日志.md",

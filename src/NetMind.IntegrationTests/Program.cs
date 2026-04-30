@@ -1,3 +1,4 @@
+using NetMind.Common.Logging;
 using NetMind.Models.Dtos;
 using NetMind.Repository.Implementations;
 using NetMind.Services.Configurations;
@@ -66,7 +67,8 @@ var aiCleanService = new AiCleanService(
             }
         }
     },
-    new HttpClient());
+    new HttpClient(),
+    NullAppLogger.Instance);
 
 var aiModels = aiCleanService.ListModels();
 Assert(aiModels.Count == 2, "AI model list should be read from configuration.");
@@ -82,9 +84,9 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 var connectionFactory = new PostgresConnectionFactory(connectionString);
-var mindMapService = new MindMapService(new MindMapRepository(connectionFactory));
-var nodeService = new NodeService(new NodeRepository(connectionFactory));
-var relationService = new NodeRelationService(new NodeRelationRepository(connectionFactory));
+var mindMapService = new MindMapService(new MindMapRepository(connectionFactory, NullAppLogger.Instance));
+var nodeService = new NodeService(new NodeRepository(connectionFactory, NullAppLogger.Instance));
+var relationService = new NodeRelationService(new NodeRelationRepository(connectionFactory, NullAppLogger.Instance));
 var transferService = new MindMapTransferService(mindMapService, nodeService, relationService);
 
 var createdMap = await mindMapService.CreateAsync(new CreateMindMapRequest { Title = "P1.2 集成测试导图" });

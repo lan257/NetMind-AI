@@ -1,3 +1,4 @@
+using NetMind.Common.Logging;
 using NetMind.Models.Entities;
 using NetMind.Repository.Interfaces;
 using Npgsql;
@@ -7,10 +8,12 @@ namespace NetMind.Repository.Implementations;
 public sealed class NodeRepository : INodeRepository
 {
     private readonly PostgresConnectionFactory _connectionFactory;
+    private readonly IAppLogger _logger;
 
-    public NodeRepository(PostgresConnectionFactory connectionFactory)
+    public NodeRepository(PostgresConnectionFactory connectionFactory, IAppLogger logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<NodeEntity>> ListByMapAsync(long mapId)
@@ -59,12 +62,12 @@ public sealed class NodeRepository : INodeRepository
 
         if (!await MapExistsAsync(connection, transaction, mapId))
         {
-            throw new InvalidOperationException("Mind map does not exist.");
+            throw new InvalidOperationException("导图不存在。");
         }
 
         if (parentId.HasValue && !await NodeExistsAsync(connection, transaction, mapId, parentId.Value))
         {
-            throw new InvalidOperationException("Parent node does not exist in the same mind map.");
+            throw new InvalidOperationException("父节点不在同一导图中或已不存在。");
         }
 
         await using var command = new NpgsqlCommand(
@@ -86,7 +89,7 @@ public sealed class NodeRepository : INodeRepository
         {
             if (!await reader.ReadAsync())
             {
-                throw new InvalidOperationException("Node was not created.");
+                throw new InvalidOperationException("节点创建失败。");
             }
 
             created = ReadNode(reader);
@@ -105,6 +108,13 @@ public sealed class NodeRepository : INodeRepository
             ("node_id", created.Id));
 
         await transaction.CommitAsync();
+        LogWriteOperation("新增节点", new Dictionary<string, object?>
+        {
+            ["NodeId"] = created.Id,
+            ["MindMapId"] = mapId,
+            ["ParentId"] = parentId
+        });
+
         return created;
     }
 
@@ -146,7 +156,14 @@ public sealed class NodeRepository : INodeRepository
         command.Parameters.AddWithValue("order_no", orderNo);
 
         await using var reader = await command.ExecuteReaderAsync();
-        return await reader.ReadAsync() ? ReadNode(reader) : null;
+        var updated = await reader.ReadAsync() ? ReadNode(reader) : null;
+        LogWriteOperation("更新节点", new Dictionary<string, object?>
+        {
+            ["NodeId"] = id,
+            ["Affected"] = updated is null ? 0 : 1
+        });
+
+        return updated;
     }
 
     public async Task<int> DeleteSelfAsync(long id)
@@ -198,6 +215,13 @@ public sealed class NodeRepository : INodeRepository
 
         await RefreshRootNodeAsync(connection, transaction, node.MapId, id);
         await transaction.CommitAsync();
+        LogWriteOperation("删除节点", new Dictionary<string, object?>
+        {
+            ["NodeId"] = id,
+            ["Mode"] = "self",
+            ["Affected"] = affected
+        });
+
         return affected;
     }
 
@@ -268,7 +292,23 @@ public sealed class NodeRepository : INodeRepository
 
         await RefreshRootNodeAsync(connection, transaction, root.MapId, id);
         await transaction.CommitAsync();
+        LogWriteOperation("删除节点子树", new Dictionary<string, object?>
+        {
+            ["NodeId"] = id,
+            ["Mode"] = "subtree",
+            ["Affected"] = affected
+        });
+
         return affected;
+    }
+
+    private void LogWriteOperation(string operation, IReadOnlyDictionary<string, object?> properties)
+    {
+        var values = new Dictionary<string, object?>(properties)
+        {
+            ["Operation"] = operation
+        };
+        _logger.Info("存储层写操作", operation, values);
     }
 
     private static async Task<bool> MapExistsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long mapId)

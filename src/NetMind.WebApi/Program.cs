@@ -5,6 +5,9 @@ using NetMind.Repository.Interfaces;
 using NetMind.Services.Configurations;
 using NetMind.Services.Implementations;
 using NetMind.Services.Interfaces;
+using NetMind.Common.Logging;
+using NetMind.WebApi.Infrastructure;
+using NetMind.WebApi.Middleware;
 using NetMind.WebApi.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,17 +19,20 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
 }
 
 builder.Services.AddControllers();
+builder.Services.AddSingleton<IAppLogger, AppLogger>();
 builder.Services.AddSingleton<IProjectStatusRepository, ProjectStatusRepository>();
 builder.Services.AddSingleton(_ => new PostgresConnectionFactory(
 builder.Configuration.GetConnectionString("Postgres") ?? string.Empty));
 builder.Services.AddScoped<IMindMapRepository, MindMapRepository>();
 builder.Services.AddScoped<INodeRepository, NodeRepository>();
 builder.Services.AddScoped<INodeRelationRepository, NodeRelationRepository>();
+builder.Services.AddScoped<IAiConversationRecordRepository, AiConversationRecordRepository>();
 builder.Services.AddScoped<IProjectStatusService, ProjectStatusService>();
 builder.Services.AddScoped<IMindMapService, MindMapService>();
 builder.Services.AddScoped<INodeService, NodeService>();
 builder.Services.AddScoped<INodeRelationService, NodeRelationService>();
 builder.Services.AddScoped<IMindMapTransferService, MindMapTransferService>();
+builder.Services.AddScoped<IAiConversationRecordService, AiConversationRecordService>();
 builder.Services.AddHttpClient<IAiCleanService, AiCleanService>();
 builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration));
 
@@ -36,6 +42,8 @@ if (app.Environment.IsDevelopment())
 {
     StartFrontendDevServer(app);
 }
+
+app.UseMiddleware<ApiCallLoggingMiddleware>();
 
 app.Use(async (context, next) =>
 {
@@ -54,7 +62,7 @@ app.Use(async (context, next) =>
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json; charset=utf-8";
         var message = ex.GetType().Namespace?.StartsWith("Npgsql", StringComparison.Ordinal) == true
-            ? $"Database request failed: {ex.Message}"
+            ? $"数据库请求失败：{ex.Message}"
             : ex.Message;
         await context.Response.WriteAsJsonAsync(ApiResult<object>.Fail(message));
     }

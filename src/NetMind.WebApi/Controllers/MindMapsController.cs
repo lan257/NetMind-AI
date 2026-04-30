@@ -26,7 +26,7 @@ public sealed class MindMapsController : ControllerBase
     public async Task<ActionResult<ApiResult<MindMapDto>>> GetAsync(long id)
     {
         var map = await _mindMapService.GetAsync(id);
-        return map is null ? NotFound(ApiResult<MindMapDto>.Fail("Mind map not found.")) : ApiResult<MindMapDto>.Ok(map);
+        return map is null ? NotFound(ApiResult<MindMapDto>.Fail("导图不存在。")) : ApiResult<MindMapDto>.Ok(map);
     }
 
     [HttpPost]
@@ -49,7 +49,7 @@ public sealed class MindMapsController : ControllerBase
         try
         {
             var updated = await _mindMapService.UpdateAsync(id, request);
-            return updated is null ? NotFound(ApiResult<MindMapDto>.Fail("Mind map or root node not found.")) : ApiResult<MindMapDto>.Ok(updated);
+            return updated is null ? NotFound(ApiResult<MindMapDto>.Fail("导图或根节点不存在。")) : ApiResult<MindMapDto>.Ok(updated);
         }
         catch (ArgumentException ex)
         {
@@ -61,13 +61,13 @@ public sealed class MindMapsController : ControllerBase
     public async Task<ActionResult<ApiResult<DeleteResultDto>>> DeleteAsync(long id)
     {
         var result = await _mindMapService.DeleteAsync(id, cascade: false);
-        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("Mind map not found."));
+        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("导图不存在。"));
     }
 
     [HttpDelete("{id:long}/cascade")]
     public async Task<ActionResult<ApiResult<DeleteResultDto>>> DeleteCascadeAsync(long id)
     {
         var result = await _mindMapService.DeleteAsync(id, cascade: true);
-        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("Mind map not found."));
+        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("导图不存在。"));
     }
 }

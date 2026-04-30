@@ -10,7 +10,7 @@ public sealed class PostgresConnectionFactory
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            throw new InvalidOperationException("ConnectionStrings:Postgres must be configured.");
+            throw new InvalidOperationException("必须配置 ConnectionStrings:Postgres 数据库连接字符串。");
         }
 
         _connectionString = connectionString;

@@ -75,7 +75,7 @@ public sealed class MindMapTransferService : IMindMapTransferService
         var title = string.IsNullOrWhiteSpace(request.TitleOverride) ? source.Title.Trim() : request.TitleOverride.Trim();
         if (string.IsNullOrWhiteSpace(title))
         {
-            throw new ArgumentException("Mind map title is required.", nameof(request));
+            throw new ArgumentException("导图标题不能为空。", nameof(request));
         }
 
         var createdMap = await _mindMapService.CreateAsync(new CreateMindMapRequest { Title = title });
@@ -105,7 +105,7 @@ public sealed class MindMapTransferService : IMindMapTransferService
         var structure = await ExportAsync(createdMap.Id);
         return new ImportedMindMapDto
         {
-            Structure = structure ?? throw new InvalidOperationException("Imported mind map cannot be loaded."),
+            Structure = structure ?? throw new InvalidOperationException("导入后的导图无法加载。"),
             NodeIdMap = createdNodeIds
         };
 
@@ -118,7 +118,7 @@ public sealed class MindMapTransferService : IMindMapTransferService
 
             if (!visiting.Add(clientId))
             {
-                throw new ArgumentException($"Node parent cycle detected at '{clientId}'.", nameof(request));
+                throw new ArgumentException($"节点父级存在循环引用：'{clientId}'。", nameof(request));
             }
 
             var sourceNode = nodeByClientId[clientId];
@@ -184,17 +184,17 @@ public sealed class MindMapTransferService : IMindMapTransferService
     {
         if (!string.Equals(transfer.SchemaVersion, SchemaVersion, StringComparison.Ordinal))
         {
-            throw new ArgumentException($"SchemaVersion must be '{SchemaVersion}'.", nameof(transfer));
+            throw new ArgumentException($"SchemaVersion 必须为 '{SchemaVersion}'。", nameof(transfer));
         }
 
         if (string.IsNullOrWhiteSpace(transfer.Title))
         {
-            throw new ArgumentException("Mind map title is required.", nameof(transfer));
+            throw new ArgumentException("导图标题不能为空。", nameof(transfer));
         }
 
         if (transfer.Nodes.Count == 0)
         {
-            throw new ArgumentException("Mind map must contain at least one node.", nameof(transfer));
+            throw new ArgumentException("导图至少需要包含一个节点。", nameof(transfer));
         }
 
         var clientIds = new HashSet<string>(StringComparer.Ordinal);
@@ -202,7 +202,7 @@ public sealed class MindMapTransferService : IMindMapTransferService
         {
             if (string.IsNullOrWhiteSpace(node.ClientId))
             {
-                throw new ArgumentException("Node clientId is required.", nameof(transfer));
+                throw new ArgumentException("节点 clientId 不能为空。", nameof(transfer));
             }
 
             var clientId = node.ClientId.Trim();
@@ -213,7 +213,7 @@ public sealed class MindMapTransferService : IMindMapTransferService
 
             if (string.IsNullOrWhiteSpace(node.Title))
             {
-                throw new ArgumentException($"Node '{clientId}' title is required.", nameof(transfer));
+                throw new ArgumentException($"节点 '{clientId}' 标题不能为空。", nameof(transfer));
             }
         }
 
@@ -221,7 +221,7 @@ public sealed class MindMapTransferService : IMindMapTransferService
         {
             if (!clientIds.Contains(node.ParentClientId!.Trim()))
             {
-                throw new ArgumentException($"Parent node '{node.ParentClientId}' does not exist.", nameof(transfer));
+                throw new ArgumentException($"父节点 '{node.ParentClientId}' 不存在。", nameof(transfer));
             }
         }
 
@@ -229,27 +229,27 @@ public sealed class MindMapTransferService : IMindMapTransferService
         {
             if (string.IsNullOrWhiteSpace(relation.SourceClientId) || string.IsNullOrWhiteSpace(relation.TargetClientId))
             {
-                throw new ArgumentException("Relation source and target are required.", nameof(transfer));
+                throw new ArgumentException("关联源节点和目标节点不能为空。", nameof(transfer));
             }
 
             if (!clientIds.Contains(relation.SourceClientId.Trim()) || !clientIds.Contains(relation.TargetClientId.Trim()))
             {
-                throw new ArgumentException("Relation source and target must exist in nodes.", nameof(transfer));
+                throw new ArgumentException("关联源节点和目标节点必须存在于节点列表中。", nameof(transfer));
             }
 
             if (string.Equals(relation.SourceClientId.Trim(), relation.TargetClientId.Trim(), StringComparison.Ordinal))
             {
-                throw new ArgumentException("Relation source and target cannot be the same.", nameof(transfer));
+                throw new ArgumentException("关联源节点和目标节点不能相同。", nameof(transfer));
             }
 
             if (string.IsNullOrWhiteSpace(relation.RelationType))
             {
-                throw new ArgumentException("Relation type is required.", nameof(transfer));
+                throw new ArgumentException("关联类型不能为空。", nameof(transfer));
             }
 
             if (relation.Weight < 0)
             {
-                throw new ArgumentException("Relation weight must be greater than or equal to 0.", nameof(transfer));
+                throw new ArgumentException("关联权重必须大于或等于 0。", nameof(transfer));
             }
         }
 

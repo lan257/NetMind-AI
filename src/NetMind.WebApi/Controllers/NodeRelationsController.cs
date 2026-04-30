@@ -26,7 +26,7 @@ public sealed class NodeRelationsController : ControllerBase
     public async Task<ActionResult<ApiResult<NodeRelationDto>>> GetAsync(long id)
     {
         var relation = await _nodeRelationService.GetAsync(id);
-        return relation is null ? NotFound(ApiResult<NodeRelationDto>.Fail("Node relation not found.")) : ApiResult<NodeRelationDto>.Ok(relation);
+        return relation is null ? NotFound(ApiResult<NodeRelationDto>.Fail("节点关联不存在。")) : ApiResult<NodeRelationDto>.Ok(relation);
     }
 
     [HttpPost]
@@ -49,7 +49,7 @@ public sealed class NodeRelationsController : ControllerBase
         try
         {
             var updated = await _nodeRelationService.UpdateAsync(id, request);
-            return updated is null ? NotFound(ApiResult<NodeRelationDto>.Fail("Node relation not found.")) : ApiResult<NodeRelationDto>.Ok(updated);
+            return updated is null ? NotFound(ApiResult<NodeRelationDto>.Fail("节点关联不存在。")) : ApiResult<NodeRelationDto>.Ok(updated);
         }
         catch (Exception ex) when (ex is ArgumentException or ArgumentOutOfRangeException)
         {
@@ -61,7 +61,7 @@ public sealed class NodeRelationsController : ControllerBase
     public async Task<ActionResult<ApiResult<DeleteResultDto>>> DeleteAsync(long id)
     {
         var result = await _nodeRelationService.DeleteAsync(id);
-        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("Node relation not found."));
+        return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("节点关联不存在。"));
     }
 
     [HttpDelete("by-node/{nodeId:long}")]

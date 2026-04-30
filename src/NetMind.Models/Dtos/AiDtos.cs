@@ -35,6 +35,8 @@ public sealed class AiRequirementStructureRequest
 
 public sealed class AiContextChatRequest
 {
+    public string ConversationId { get; init; } = string.Empty;
+
     public string Message { get; init; } = string.Empty;
 
     public string Context { get; init; } = string.Empty;

@@ -27,7 +27,7 @@ public sealed class ApiResult<TData>
     /// <param name="data">The response data.</param>
     /// <param name="message">The response message.</param>
     /// <returns>A successful API result.</returns>
-    public static ApiResult<TData> Ok(TData data, string message = "ok")
+    public static ApiResult<TData> Ok(TData data, string message = "成功")
     {
         return new ApiResult<TData>
         {

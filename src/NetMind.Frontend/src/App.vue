@@ -19,6 +19,7 @@ const aiStatus = ref('');
 const chatOpen = ref(false);
 const chatInput = ref('');
 const chatMessages = ref([]);
+const chatConversationId = ref(createConversationId());
 const loading = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
@@ -75,6 +76,14 @@ const visualNodes = computed(() => {
 });
 const chatContextText = computed(() => buildConversationContext());
 
+function createConversationId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 async function api(path, options = {}) {
   const headers = { ...(options.headers ?? {}) };
   if (!(options.body instanceof FormData)) {
@@ -87,11 +96,11 @@ async function api(path, options = {}) {
   try {
     result = text ? JSON.parse(text) : {};
   } catch {
-    throw new Error(text || `Request failed: ${response.status}`);
+    throw new Error(text || `请求失败：${response.status}`);
   }
 
   if (!response.ok || !result.success) {
-    throw new Error(result.message || `Request failed: ${response.status}`);
+    throw new Error(result.message || `请求失败：${response.status}`);
   }
 
   return result.data;
@@ -109,7 +118,7 @@ async function run(action, successMessage = '') {
     }
     return result;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Operation failed';
+    errorMessage.value = error instanceof Error ? error.message : '操作失败';
     return null;
   } finally {
     loading.value = false;
@@ -164,7 +173,7 @@ async function refreshMapData(mapId, options = {}) {
 }
 
 async function loadMaps() {
-  const data = await run(() => api('/api/mind-maps'), 'Maps refreshed');
+  const data = await run(() => api('/api/mind-maps'), '导图已刷新');
   if (!data) {
     return;
   }
@@ -198,19 +207,19 @@ async function selectMap(id) {
   selectedMapId.value = id;
   const map = maps.value.find((item) => item.id === id);
   mapTitle.value = map?.title ?? '';
-  await refreshMapData(id, { keepNodeId: null, message: 'Map loaded' });
+  await refreshMapData(id, { keepNodeId: null, message: '导图已加载' });
 }
 
 async function createMap() {
   const title = mapTitle.value.trim();
   if (!title) {
-    errorMessage.value = 'Map title is required';
+    errorMessage.value = '请输入导图标题';
     return;
   }
 
   const created = await run(
     () => api('/api/mind-maps', { method: 'POST', body: JSON.stringify({ title }) }),
-    'Map created'
+    '导图已创建'
   );
 
   if (created) {
@@ -221,13 +230,13 @@ async function createMap() {
 
 async function renameMap() {
   if (!selectedMap.value) {
-    errorMessage.value = 'Select a map first';
+    errorMessage.value = '请先选择导图';
     return;
   }
 
   const title = mapTitle.value.trim();
   if (!title) {
-    errorMessage.value = 'New map title is required';
+    errorMessage.value = '请输入新的导图标题';
     return;
   }
 
@@ -236,7 +245,7 @@ async function renameMap() {
       method: 'PUT',
       body: JSON.stringify({ title, rootNodeId: selectedMap.value.rootNodeId })
     }),
-    'Map renamed'
+    '导图已重命名'
   );
 
   if (updated) {
@@ -246,14 +255,14 @@ async function renameMap() {
 
 async function deleteMap(cascade) {
   if (!selectedMap.value) {
-    errorMessage.value = 'Select a map first';
+    errorMessage.value = '请先选择导图';
     return;
   }
 
   const deletedId = selectedMap.value.id;
   const deleted = await run(
     () => api(`/api/mind-maps/${deletedId}${cascade ? '/cascade' : ''}`, { method: 'DELETE' }),
-    cascade ? 'Map and content deleted' : 'Map deleted'
+    cascade ? '导图及内容已删除' : '导图已删除'
   );
 
   if (deleted) {
@@ -269,13 +278,13 @@ function selectNode(id) {
 
 async function createNode(parentId = null) {
   if (!selectedMap.value) {
-    errorMessage.value = 'Select a map first';
+    errorMessage.value = '请先选择导图';
     return;
   }
 
   const title = nodeForm.value.title.trim();
   if (!title) {
-    errorMessage.value = 'Node title is required';
+    errorMessage.value = '请输入节点标题';
     return;
   }
 
@@ -290,7 +299,7 @@ async function createNode(parentId = null) {
         orderNo: Number(nodeForm.value.orderNo) || 0
       })
     }),
-    'Node created'
+    '节点已创建'
   );
 
   if (created) {
@@ -300,13 +309,13 @@ async function createNode(parentId = null) {
 
 async function updateNode() {
   if (!selectedNode.value) {
-    errorMessage.value = 'Select a node first';
+    errorMessage.value = '请先选择节点';
     return;
   }
 
   const title = nodeForm.value.title.trim();
   if (!title) {
-    errorMessage.value = 'Node title is required';
+    errorMessage.value = '请输入节点标题';
     return;
   }
 
@@ -320,7 +329,7 @@ async function updateNode() {
         orderNo: Number(nodeForm.value.orderNo) || 0
       })
     }),
-    'Node saved'
+    '节点已保存'
   );
 
   if (updated) {
@@ -330,14 +339,14 @@ async function updateNode() {
 
 async function deleteNode(subtree) {
   if (!selectedNode.value) {
-    errorMessage.value = 'Select a node first';
+    errorMessage.value = '请先选择节点';
     return;
   }
 
   const deletedNodeId = selectedNode.value.id;
   const deleted = await run(
     () => api(`/api/nodes/${deletedNodeId}${subtree ? '/subtree' : ''}`, { method: 'DELETE' }),
-    subtree ? 'Node subtree deleted' : 'Node deleted'
+    subtree ? '节点子树已删除' : '节点已删除'
   );
 
   if (deleted) {
@@ -347,13 +356,13 @@ async function deleteNode(subtree) {
 
 async function createRelation() {
   if (!selectedMap.value || !selectedNode.value) {
-    errorMessage.value = 'Select a map and source node first';
+    errorMessage.value = '请先选择导图和源节点';
     return;
   }
 
   const targetId = Number(relationForm.value.targetId);
   if (!targetId) {
-    errorMessage.value = 'Target node is required';
+    errorMessage.value = '请选择目标节点';
     return;
   }
 
@@ -368,7 +377,7 @@ async function createRelation() {
         weight: Number(relationForm.value.weight) || 0
       })
     }),
-    'Relation created'
+    '关联已创建'
   );
 
   if (created) {
@@ -378,7 +387,7 @@ async function createRelation() {
 }
 
 async function deleteRelation(id) {
-  const deleted = await run(() => api(`/api/node-relations/${id}`, { method: 'DELETE' }), 'Relation deleted');
+  const deleted = await run(() => api(`/api/node-relations/${id}`, { method: 'DELETE' }), '关联已删除');
   if (deleted) {
     await refreshMapData(selectedMap.value.id, { keepNodeId: selectedNodeId.value });
   }
@@ -386,13 +395,13 @@ async function deleteRelation(id) {
 
 async function exportStructure() {
   if (!selectedMap.value) {
-    errorMessage.value = 'Select a map first';
+    errorMessage.value = '请先选择导图';
     return;
   }
 
   const structure = await run(
     () => api(`/api/mind-map-transfer/${selectedMap.value.id}/structure`),
-    'Structure exported'
+    '结构体已导出'
   );
   if (structure) {
     transferText.value = JSON.stringify(structure.transfer, null, 2);
@@ -405,7 +414,7 @@ function downloadUrl(url) {
 
 function downloadSelectedMap() {
   if (!selectedMap.value) {
-    errorMessage.value = 'Select a map first';
+    errorMessage.value = '请先选择导图';
     return;
   }
 
@@ -415,7 +424,7 @@ function downloadSelectedMap() {
 async function importStructure() {
   const raw = transferText.value.trim();
   if (!raw) {
-    errorMessage.value = 'Paste a transfer structure first';
+    errorMessage.value = '请先粘贴导图结构体';
     return;
   }
 
@@ -423,7 +432,7 @@ async function importStructure() {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    errorMessage.value = 'Transfer JSON is invalid';
+    errorMessage.value = '导图结构 JSON 格式无效';
     return;
   }
 
@@ -435,7 +444,7 @@ async function importStructure() {
         titleOverride: importTitleOverride.value.trim() || null
       })
     }),
-    'Structure imported'
+    '结构体已导入'
   );
 
   if (imported) {
@@ -458,7 +467,7 @@ async function importFile(event) {
 
   const imported = await run(
     () => api('/api/mind-map-transfer/file', { method: 'POST', body: form }),
-    'File imported'
+    '文件已导入'
   );
 
   if (fileInput.value) {
@@ -474,12 +483,12 @@ async function importFile(event) {
 async function cleanNaturalLanguage() {
   const naturalLanguage = naturalLanguageInput.value.trim();
   if (!naturalLanguage) {
-    errorMessage.value = 'Natural language input is required';
+    errorMessage.value = '请输入自然语言内容';
     return;
   }
 
   transferText.value = '';
-  aiStatus.value = 'AI is cleaning the text...';
+  aiStatus.value = 'AI 正在清洗文本...';
   const result = await run(
     () => api('/api/ai/clean', {
       method: 'POST',
@@ -488,12 +497,12 @@ async function cleanNaturalLanguage() {
         modelId: selectedAiModelId.value || null
       })
     }),
-    'AI structure cleaned'
+    'AI 结构体已生成'
   );
 
   if (result) {
     transferText.value = JSON.stringify(result.transfer, null, 2);
-    aiStatus.value = 'AI structure cleaned';
+    aiStatus.value = 'AI 结构体已生成';
   } else {
     aiStatus.value = '';
   }
@@ -510,12 +519,13 @@ function closeChat() {
 function startNewConversation() {
   chatMessages.value = [];
   chatInput.value = '';
+  chatConversationId.value = createConversationId();
   aiStatus.value = '已开始新对话';
 }
 
 function buildConversationContext(messages = chatMessages.value) {
   return messages
-    .map((message) => `${message.role === 'user' ? 'User' : 'AI'}: ${message.content}`)
+    .map((message) => `${message.role === 'user' ? '用户' : 'AI'}：${message.content}`)
     .join('\n\n');
 }
 
@@ -536,6 +546,7 @@ async function sendChatMessage() {
       method: 'POST',
       body: JSON.stringify({
         message,
+        conversationId: chatConversationId.value,
         context: previousContext,
         modelId: selectedAiModelId.value || null
       })
@@ -590,12 +601,12 @@ onMounted(async () => {
   <main class="workspace">
     <header class="topbar">
       <div>
-        <p class="eyebrow">P1.3</p>
+        <p class="eyebrow">P1.4</p>
         <h1>NetMind</h1>
       </div>
       <div class="topbar-actions">
-        <a class="link-button" href="/swagger" target="_blank">Swagger</a>
-        <button type="button" data-testid="refresh-maps" @click="loadMaps" :disabled="loading">Refresh</button>
+        <a class="link-button" href="/swagger" target="_blank">接口文档</a>
+        <button type="button" data-testid="refresh-maps" @click="loadMaps" :disabled="loading">刷新</button>
       </div>
     </header>
 
@@ -605,12 +616,12 @@ onMounted(async () => {
     <section class="layout">
       <aside class="sidebar">
         <div class="section-heading">
-          <h2>Maps</h2>
+          <h2>导图</h2>
           <span>{{ maps.length }}</span>
         </div>
         <div class="field-row">
-          <input v-model="mapTitle" data-testid="map-title" type="text" placeholder="Map title" />
-          <button type="button" data-testid="create-map" @click="createMap" :disabled="loading">Add</button>
+          <input v-model="mapTitle" data-testid="map-title" type="text" placeholder="导图标题" />
+          <button type="button" data-testid="create-map" @click="createMap" :disabled="loading">新增</button>
         </div>
         <div class="map-list">
           <button
@@ -627,21 +638,21 @@ onMounted(async () => {
         </div>
         <div class="button-grid">
           <button type="button" data-testid="rename-map" @click="renameMap" :disabled="loading || !selectedMap">
-            Rename
+            重命名
           </button>
-          <button type="button" @click="deleteMap(false)" :disabled="loading || !selectedMap">Delete map</button>
+          <button type="button" @click="deleteMap(false)" :disabled="loading || !selectedMap">删除导图</button>
           <button type="button" class="danger" @click="deleteMap(true)" :disabled="loading || !selectedMap">
-            Delete all
+            删除全部
           </button>
         </div>
       </aside>
 
       <section class="canvas">
         <div class="section-heading">
-          <h2>{{ selectedMap?.title ?? 'No map selected' }}</h2>
-          <span>{{ nodes.length }} nodes</span>
+          <h2>{{ selectedMap?.title ?? '未选择导图' }}</h2>
+          <span>{{ nodes.length }} 个节点</span>
         </div>
-        <div v-if="visualNodes.length === 0" class="empty">No nodes yet. Create a root node from the editor.</div>
+        <div v-if="visualNodes.length === 0" class="empty">暂无节点，请先在右侧编辑区创建根节点。</div>
         <div v-else class="node-list" data-testid="node-list">
           <button
             v-for="node in visualNodes"
@@ -653,14 +664,14 @@ onMounted(async () => {
             @click="selectNode(node.id)"
           >
             <span class="node-title">{{ node.title }}</span>
-            <span class="node-meta">{{ node.childCount }} child</span>
+            <span class="node-meta">{{ node.childCount }} 个子节点</span>
           </button>
         </div>
 
         <section class="ai-panel">
           <div class="section-heading">
-            <h2>AI Clean</h2>
-            <span>{{ aiModels.length }} model</span>
+            <h2>AI 清洗</h2>
+            <span>{{ aiModels.length }} 个模型</span>
           </div>
           <div class="field-row ai-actions">
             <select v-model="selectedAiModelId" data-testid="ai-model">
@@ -680,62 +691,62 @@ onMounted(async () => {
             v-model="naturalLanguageInput"
             data-testid="ai-natural-language"
             rows="7"
-            placeholder="Describe a mind map in natural language. The cleaner will expand it into the standard transfer JSON."
+            placeholder="请输入自然语言描述，AI 会扩充为标准导图结构 JSON。"
           ></textarea>
         </section>
 
         <section class="transfer-panel">
           <div class="section-heading">
-            <h2>Import / Export</h2>
+            <h2>导入 / 导出</h2>
             <span>JSON</span>
           </div>
           <div class="transfer-actions">
             <button type="button" data-testid="export-structure" @click="exportStructure" :disabled="loading || !selectedMap">
-              Export structure
+              导出结构
             </button>
             <button type="button" data-testid="export-file" @click="downloadSelectedMap" :disabled="loading || !selectedMap">
-              Export file
+              导出文件
             </button>
             <button type="button" data-testid="download-template" @click="downloadUrl('/api/mind-map-transfer/template')">
-              Template
+              模板
             </button>
             <button type="button" data-testid="import-structure" @click="importStructure" :disabled="loading">
-              Import structure
+              导入结构
             </button>
           </div>
           <div class="field-row transfer-import-row">
-            <input v-model="importTitleOverride" data-testid="import-title" type="text" placeholder="Optional imported title" />
+            <input v-model="importTitleOverride" data-testid="import-title" type="text" placeholder="可选：导入后的标题" />
             <input ref="fileInput" data-testid="import-file" type="file" accept="application/json,.json" @change="importFile" />
           </div>
           <textarea
             v-model="transferText"
             data-testid="transfer-text"
             rows="10"
-            placeholder="Exported structure appears here. You can also paste a template or transfer JSON and import it."
+            placeholder="导出的结构会显示在这里，也可以粘贴模板或导图 JSON 后导入。"
           ></textarea>
         </section>
       </section>
 
       <aside class="inspector">
         <div class="section-heading">
-          <h2>Node</h2>
-          <span>{{ selectedNode ? `#${selectedNode.id}` : 'None' }}</span>
+          <h2>节点</h2>
+          <span>{{ selectedNode ? `#${selectedNode.id}` : '未选择' }}</span>
         </div>
         <label>
-          Title
-          <input v-model="nodeForm.title" data-testid="node-title" type="text" placeholder="Node title" />
+          标题
+          <input v-model="nodeForm.title" data-testid="node-title" type="text" placeholder="节点标题" />
         </label>
         <label>
-          Content
-          <textarea v-model="nodeForm.content" data-testid="node-content" rows="5" placeholder="Node content"></textarea>
+          内容
+          <textarea v-model="nodeForm.content" data-testid="node-content" rows="5" placeholder="节点内容"></textarea>
         </label>
         <label>
-          Order
+          排序
           <input v-model="nodeForm.orderNo" data-testid="node-order" type="number" min="0" />
         </label>
         <div class="button-grid">
           <button type="button" data-testid="create-root-node" @click="createNode(null)" :disabled="loading || !selectedMap">
-            Root
+            根节点
           </button>
           <button
             type="button"
@@ -743,40 +754,40 @@ onMounted(async () => {
             @click="createNode(selectedNode?.id ?? null)"
             :disabled="loading || !selectedMap"
           >
-            Child
+            子节点
           </button>
           <button type="button" data-testid="save-node" @click="updateNode" :disabled="loading || !selectedNode">
-            Save
+            保存
           </button>
-          <button type="button" @click="deleteNode(false)" :disabled="loading || !selectedNode">Delete node</button>
+          <button type="button" @click="deleteNode(false)" :disabled="loading || !selectedNode">删除节点</button>
           <button type="button" class="danger" @click="deleteNode(true)" :disabled="loading || !selectedNode">
-            Delete tree
+            删除子树
           </button>
         </div>
 
         <div class="section-heading relation-title">
-          <h2>Relation</h2>
+          <h2>关联</h2>
           <span>{{ selectedNodeRelations.length }}/{{ relations.length }}</span>
         </div>
         <label>
-          Target
+          目标节点
           <select v-model="relationForm.targetId" data-testid="relation-target" :disabled="!selectedNode">
-            <option value="">Choose target</option>
+            <option value="">请选择目标</option>
             <option v-for="node in candidateTargets" :key="node.id" :value="node.id">
               {{ node.title }}
             </option>
           </select>
         </label>
         <label>
-          Type
+          类型
           <input v-model="relationForm.relationType" data-testid="relation-type" type="text" />
         </label>
         <label>
-          Weight
+          权重
           <input v-model="relationForm.weight" data-testid="relation-weight" type="number" min="0" step="0.1" />
         </label>
         <button type="button" data-testid="create-relation" @click="createRelation" :disabled="loading || !selectedNode">
-          Add relation
+          新增关联
         </button>
         <div class="relation-list">
           <div v-for="relation in selectedNodeRelations" :key="relation.id" class="relation-row">
@@ -786,9 +797,9 @@ onMounted(async () => {
               {{ nodeTitleById.get(relation.targetId) ?? `#${relation.targetId}` }}
               · {{ relation.relationType }}
             </span>
-            <button type="button" @click="deleteRelation(relation.id)" :disabled="loading">Delete</button>
+            <button type="button" @click="deleteRelation(relation.id)" :disabled="loading">删除</button>
           </div>
-          <div v-if="selectedNode && selectedNodeRelations.length === 0" class="empty small">No relation for this node.</div>
+          <div v-if="selectedNode && selectedNodeRelations.length === 0" class="empty small">当前节点暂无关联。</div>
         </div>
       </aside>
     </section>

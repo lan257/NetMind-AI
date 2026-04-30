@@ -11,29 +11,31 @@ internal static class SwaggerDocumentFactory
             {
                 title = "NetMind API",
                 version = "v1",
-                description = "Mind map CRUD, import/export and P1.3 configured database and AI cleaning API."
+                description = "NetMind P1.4 导图、导入导出、AI 清洗、日志和 AI 对话记录接口。"
             },
             paths = new Dictionary<string, object>
             {
-                ["/api/mind-maps"] = Path("List and create mind maps", "get", "post"),
-                ["/api/mind-maps/{id}"] = Path("Get, update and logically delete one mind map", "get", "put", "delete"),
-                ["/api/mind-maps/{id}/cascade"] = Path("Logically delete one mind map with its nodes and relations", "delete"),
-                ["/api/nodes/by-map/{mapId}"] = Path("List nodes in a mind map", "get"),
-                ["/api/nodes/{id}"] = Path("Get, update and logically delete one node only", "get", "put", "delete"),
-                ["/api/nodes/{id}/subtree"] = Path("Logically delete one node and its subtree", "delete"),
-                ["/api/node-relations/by-map/{mapId}"] = Path("List node relations in a mind map", "get"),
-                ["/api/node-relations/{id}"] = Path("Get, update and logically delete one node relation", "get", "put", "delete"),
-                ["/api/node-relations/by-node/{nodeId}"] = Path("Logically delete all relations connected to one node", "delete"),
-                ["/api/mind-map-transfer/{mapId}/structure"] = Path("Export one full mind map as a structured response", "get"),
-                ["/api/mind-map-transfer/{mapId}/file"] = Path("Export one full mind map as a JSON file", "get"),
-                ["/api/mind-map-transfer/structure"] = Path("Import one full mind map from a structured request", "post"),
-                ["/api/mind-map-transfer/file"] = Path("Import one full mind map from an uploaded JSON file", "post"),
-                ["/api/mind-map-transfer/template"] = Path("Download a JSON import template", "get"),
-                ["/api/ai/models"] = Path("List configured AI cleaning models", "get"),
-                ["/api/ai/clean"] = Path("Clean natural language through DeepSeek or Ollama into the standard mind map transfer structure", "post"),
-                ["/api/ai/context-chat"] = Path("Chat with AI by using the current conversation context", "post"),
-                ["/api/ai/requirements/structure"] = Path("Structure immature requirements with optional user context and context compression", "post"),
-                ["/api/system/health"] = Path("Get system health", "get")
+                ["/api/mind-maps"] = Path("查询和创建导图", "get", "post"),
+                ["/api/mind-maps/{id}"] = Path("查询、更新和逻辑删除单个导图", "get", "put", "delete"),
+                ["/api/mind-maps/{id}/cascade"] = Path("逻辑删除导图及其节点和关联", "delete"),
+                ["/api/nodes/by-map/{mapId}"] = Path("查询导图内节点", "get"),
+                ["/api/nodes/{id}"] = Path("查询、更新和逻辑删除单个节点", "get", "put", "delete"),
+                ["/api/nodes/{id}/subtree"] = Path("逻辑删除节点及其子树", "delete"),
+                ["/api/node-relations/by-map/{mapId}"] = Path("查询导图内节点关联", "get"),
+                ["/api/node-relations/{id}"] = Path("查询、更新和逻辑删除单个节点关联", "get", "put", "delete"),
+                ["/api/node-relations/by-node/{nodeId}"] = Path("按节点逻辑删除相关关联", "delete"),
+                ["/api/mind-map-transfer/{mapId}/structure"] = Path("导出完整导图结构", "get"),
+                ["/api/mind-map-transfer/{mapId}/file"] = Path("导出完整导图 JSON 文件", "get"),
+                ["/api/mind-map-transfer/structure"] = Path("从结构体导入完整导图", "post"),
+                ["/api/mind-map-transfer/file"] = Path("从上传的 JSON 文件导入完整导图", "post"),
+                ["/api/mind-map-transfer/template"] = Path("下载 JSON 导入模板", "get"),
+                ["/api/ai/models"] = Path("查询 AI 清洗模型配置", "get"),
+                ["/api/ai/clean"] = Path("通过 DeepSeek 或 Ollama 将自然语言清洗为标准导图结构", "post"),
+                ["/api/ai/context-chat"] = Path("基于当前对话上下文与 AI 对话", "post"),
+                ["/api/ai/requirements/structure"] = Path("结合上下文压缩拆解不成熟需求", "post"),
+                ["/api/ai-conversation-records"] = Path("查询和创建 AI 对话记录", "get", "post"),
+                ["/api/ai-conversation-records/{id}"] = Path("查询、更新和逻辑删除单条 AI 对话记录", "get", "put", "delete"),
+                ["/api/system/health"] = Path("查询系统健康状态", "get")
             }
         };
     }
@@ -46,7 +48,7 @@ internal static class SwaggerDocumentFactory
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>NetMind Swagger</title>
+                <title>NetMind 接口文档</title>
                 <style>
                     body { font-family: Arial, sans-serif; margin: 32px; color: #1f2937; }
                     code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
@@ -54,8 +56,8 @@ internal static class SwaggerDocumentFactory
                 </style>
             </head>
             <body>
-                <h1>NetMind Swagger</h1>
-                <p>OpenAPI JSON: <a href="/swagger/v1/swagger.json">/swagger/v1/swagger.json</a></p>
+                <h1>NetMind 接口文档</h1>
+                <p>OpenAPI JSON：<a href="/swagger/v1/swagger.json">/swagger/v1/swagger.json</a></p>
                 <ul id="paths"></ul>
                 <script>
                     fetch('/swagger/v1/swagger.json')
@@ -85,9 +87,9 @@ internal static class SwaggerDocumentFactory
                 summary,
                 responses = new Dictionary<string, object>
                 {
-                    ["200"] = new { description = "OK" },
-                    ["400"] = new { description = "Bad Request" },
-                    ["404"] = new { description = "Not Found" }
+                    ["200"] = new { description = "成功" },
+                    ["400"] = new { description = "请求错误" },
+                    ["404"] = new { description = "未找到" }
                 }
             });
     }

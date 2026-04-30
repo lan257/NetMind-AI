@@ -1,3 +1,4 @@
+using NetMind.Common.Logging;
 using NetMind.Models.Entities;
 using NetMind.Repository.Interfaces;
 using Npgsql;
@@ -7,10 +8,12 @@ namespace NetMind.Repository.Implementations;
 public sealed class NodeRelationRepository : INodeRelationRepository
 {
     private readonly PostgresConnectionFactory _connectionFactory;
+    private readonly IAppLogger _logger;
 
-    public NodeRelationRepository(PostgresConnectionFactory connectionFactory)
+    public NodeRelationRepository(PostgresConnectionFactory connectionFactory, IAppLogger logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<NodeRelationEntity>> ListByMapAsync(long mapId)
@@ -56,14 +59,14 @@ public sealed class NodeRelationRepository : INodeRelationRepository
     {
         if (sourceId == targetId)
         {
-            throw new InvalidOperationException("Source and target node cannot be the same.");
+            throw new InvalidOperationException("源节点和目标节点不能相同。");
         }
 
         await using var connection = await _connectionFactory.OpenAsync();
         var endpointCount = await CountExistingEndpointsAsync(connection, mapId, sourceId, targetId);
         if (endpointCount != 2)
         {
-            throw new InvalidOperationException("Source and target node must exist in the same mind map.");
+            throw new InvalidOperationException("源节点和目标节点必须存在于同一导图中。");
         }
 
         await using var command = new NpgsqlCommand(
@@ -82,10 +85,19 @@ public sealed class NodeRelationRepository : INodeRelationRepository
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
-            throw new InvalidOperationException("Node relation was not created.");
+            throw new InvalidOperationException("节点关联创建失败。");
         }
 
-        return ReadRelation(reader);
+        var created = ReadRelation(reader);
+        LogWriteOperation("新增节点关联", new Dictionary<string, object?>
+        {
+            ["RelationId"] = created.Id,
+            ["MindMapId"] = mapId,
+            ["SourceId"] = sourceId,
+            ["TargetId"] = targetId
+        });
+
+        return created;
     }
 
     public async Task<NodeRelationEntity?> UpdateAsync(long id, string relationType, double weight)
@@ -105,7 +117,14 @@ public sealed class NodeRelationRepository : INodeRelationRepository
         command.Parameters.AddWithValue("weight", weight);
 
         await using var reader = await command.ExecuteReaderAsync();
-        return await reader.ReadAsync() ? ReadRelation(reader) : null;
+        var updated = await reader.ReadAsync() ? ReadRelation(reader) : null;
+        LogWriteOperation("更新节点关联", new Dictionary<string, object?>
+        {
+            ["RelationId"] = id,
+            ["Affected"] = updated is null ? 0 : 1
+        });
+
+        return updated;
     }
 
     public async Task<int> DeleteAsync(long id)
@@ -121,7 +140,14 @@ public sealed class NodeRelationRepository : INodeRelationRepository
             connection);
         command.Parameters.AddWithValue("id", id);
 
-        return await command.ExecuteNonQueryAsync();
+        var affected = await command.ExecuteNonQueryAsync();
+        LogWriteOperation("删除节点关联", new Dictionary<string, object?>
+        {
+            ["RelationId"] = id,
+            ["Affected"] = affected
+        });
+
+        return affected;
     }
 
     public async Task<int> DeleteByNodeAsync(long nodeId)
@@ -137,7 +163,23 @@ public sealed class NodeRelationRepository : INodeRelationRepository
             connection);
         command.Parameters.AddWithValue("node_id", nodeId);
 
-        return await command.ExecuteNonQueryAsync();
+        var affected = await command.ExecuteNonQueryAsync();
+        LogWriteOperation("按节点删除关联", new Dictionary<string, object?>
+        {
+            ["NodeId"] = nodeId,
+            ["Affected"] = affected
+        });
+
+        return affected;
+    }
+
+    private void LogWriteOperation(string operation, IReadOnlyDictionary<string, object?> properties)
+    {
+        var values = new Dictionary<string, object?>(properties)
+        {
+            ["Operation"] = operation
+        };
+        _logger.Info("存储层写操作", operation, values);
     }
 
     private static async Task<long> CountExistingEndpointsAsync(NpgsqlConnection connection, long mapId, long sourceId, long targetId)

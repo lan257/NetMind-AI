@@ -10,10 +10,12 @@ namespace NetMind.WebApi.Controllers;
 public sealed class AiController : ControllerBase
 {
     private readonly IAiCleanService _aiCleanService;
+    private readonly IAiConversationRecordService _conversationRecordService;
 
-    public AiController(IAiCleanService aiCleanService)
+    public AiController(IAiCleanService aiCleanService, IAiConversationRecordService conversationRecordService)
     {
         _aiCleanService = aiCleanService;
+        _conversationRecordService = conversationRecordService;
     }
 
     [HttpGet("models")]
@@ -53,7 +55,29 @@ public sealed class AiController : ControllerBase
     {
         try
         {
-            return ApiResult<AiContextChatResultDto>.Ok(await _aiCleanService.ChatWithContextAsync(request));
+            var result = await _aiCleanService.ChatWithContextAsync(request);
+            if (!string.IsNullOrWhiteSpace(request.ConversationId))
+            {
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "user",
+                    Content = request.Message,
+                    ModelId = request.ModelId
+                });
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "assistant",
+                    Content = result.Reply,
+                    ModelId = result.SelectedModel.Id,
+                    Prompt = result.Prompt,
+                    ContextSummary = result.ContextSummary,
+                    WasContextCompressed = result.WasContextCompressed
+                });
+            }
+
+            return ApiResult<AiContextChatResultDto>.Ok(result);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
         {

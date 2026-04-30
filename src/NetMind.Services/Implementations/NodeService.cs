@@ -54,7 +54,7 @@ public sealed class NodeService : INodeService
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException($"{name} is required.", name);
+            throw new ArgumentException($"{name} 不能为空。", name);
         }
 
         return value.Trim();

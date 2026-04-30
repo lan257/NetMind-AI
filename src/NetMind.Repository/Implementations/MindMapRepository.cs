@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using NetMind.Common.Logging;
 using NetMind.Models.Entities;
 using NetMind.Repository.Interfaces;
 using Npgsql;
@@ -7,10 +9,12 @@ namespace NetMind.Repository.Implementations;
 public sealed class MindMapRepository : IMindMapRepository
 {
     private readonly PostgresConnectionFactory _connectionFactory;
+    private readonly IAppLogger _logger;
 
-    public MindMapRepository(PostgresConnectionFactory connectionFactory)
+    public MindMapRepository(PostgresConnectionFactory connectionFactory, IAppLogger logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<MindMapEntity>> ListAsync()
@@ -66,10 +70,17 @@ public sealed class MindMapRepository : IMindMapRepository
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
-            throw new InvalidOperationException("Mind map was not created.");
+            throw new InvalidOperationException("导图创建失败。");
         }
 
-        return ReadMindMap(reader);
+        var created = ReadMindMap(reader);
+        LogWriteOperation("新增导图", stopwatch: null, new Dictionary<string, object?>
+        {
+            ["MindMapId"] = created.Id,
+            ["Title"] = title
+        });
+
+        return created;
     }
 
     public async Task<MindMapEntity?> UpdateAsync(long id, string title, long? rootNodeId)
@@ -95,7 +106,14 @@ public sealed class MindMapRepository : IMindMapRepository
         command.Parameters.AddWithValue("root_node_id", (object?)rootNodeId ?? DBNull.Value);
 
         await using var reader = await command.ExecuteReaderAsync();
-        return await reader.ReadAsync() ? ReadMindMap(reader) : null;
+        var updated = await reader.ReadAsync() ? ReadMindMap(reader) : null;
+        LogWriteOperation("更新导图", stopwatch: null, new Dictionary<string, object?>
+        {
+            ["MindMapId"] = id,
+            ["Affected"] = updated is null ? 0 : 1
+        });
+
+        return updated;
     }
 
     public async Task<int> DeleteAsync(long id, bool cascade)
@@ -148,7 +166,29 @@ public sealed class MindMapRepository : IMindMapRepository
         }
 
         await transaction.CommitAsync();
+        LogWriteOperation("删除导图", stopwatch: null, new Dictionary<string, object?>
+        {
+            ["MindMapId"] = id,
+            ["Cascade"] = cascade,
+            ["Affected"] = affected
+        });
+
         return affected;
+    }
+
+    private void LogWriteOperation(string operation, Stopwatch? stopwatch, IReadOnlyDictionary<string, object?> properties)
+    {
+        var values = new Dictionary<string, object?>(properties)
+        {
+            ["Operation"] = operation
+        };
+
+        if (stopwatch is not null)
+        {
+            values["ElapsedMs"] = stopwatch.ElapsedMilliseconds;
+        }
+
+        _logger.Info("存储层写操作", operation, values);
     }
 
     private static async Task<bool> NodeExistsAsync(NpgsqlConnection connection, long mapId, long nodeId)

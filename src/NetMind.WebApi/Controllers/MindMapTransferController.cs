@@ -27,7 +27,7 @@ public sealed class MindMapTransferController : ControllerBase
     {
         var structure = await _transferService.ExportAsync(mapId);
         return structure is null
-            ? NotFound(ApiResult<MindMapStructureDto>.Fail("Mind map not found."))
+            ? NotFound(ApiResult<MindMapStructureDto>.Fail("导图不存在。"))
             : ApiResult<MindMapStructureDto>.Ok(structure);
     }
 
@@ -37,7 +37,7 @@ public sealed class MindMapTransferController : ControllerBase
         var structure = await _transferService.ExportAsync(mapId);
         if (structure is null)
         {
-            return NotFound(ApiResult<MindMapStructureDto>.Fail("Mind map not found."));
+            return NotFound(ApiResult<MindMapStructureDto>.Fail("导图不存在。"));
         }
 
         return JsonFile(structure.Transfer, $"netmind-map-{mapId}.json");
@@ -61,7 +61,7 @@ public sealed class MindMapTransferController : ControllerBase
     {
         if (file.Length == 0)
         {
-            return BadRequest(ApiResult<ImportedMindMapDto>.Fail("Import file is required."));
+            return BadRequest(ApiResult<ImportedMindMapDto>.Fail("请上传导入文件。"));
         }
 
         try
@@ -93,7 +93,7 @@ public sealed class MindMapTransferController : ControllerBase
         if (document.RootElement.TryGetProperty("mindMap", out _))
         {
             var request = JsonSerializer.Deserialize<ImportMindMapRequest>(root, JsonOptions)
-                ?? throw new ArgumentException("Import request cannot be empty.");
+                ?? throw new ArgumentException("导入请求不能为空。");
             return new ImportMindMapRequest
             {
                 MindMap = request.MindMap,
@@ -102,7 +102,7 @@ public sealed class MindMapTransferController : ControllerBase
         }
 
         var transfer = JsonSerializer.Deserialize<MindMapTransferDto>(root, JsonOptions)
-            ?? throw new ArgumentException("Mind map transfer cannot be empty.");
+            ?? throw new ArgumentException("导图传输结构不能为空。");
         return new ImportMindMapRequest
         {
             MindMap = transfer,
