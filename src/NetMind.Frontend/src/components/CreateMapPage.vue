@@ -1,6 +1,6 @@
 <script setup>
 import { ChatDotRound, Download, MagicStick, Upload } from '@element-plus/icons-vue';
-import MapCanvasPlaceholder from './MapCanvasPlaceholder.vue';
+import MindMapCanvas from './MindMapCanvas.vue';
 import NodeTreeView from './NodeTreeView.vue';
 
 defineProps({
@@ -36,7 +36,7 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
           v-model="workspace.naturalLanguageInput.value"
           data-testid="ai-natural-language"
           type="textarea"
-          :rows="12"
+          :rows="14"
           placeholder="请输入自然语言描述，AI 会扩充为标准导图结构 JSON。"
         />
       </section>
@@ -92,7 +92,14 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
           @update:model-value="$emit('update:viewMode', $event)"
         />
       </div>
-      <MapCanvasPlaceholder v-if="viewMode === 'graph'" :map="workspace.selectedMap.value" :nodes="workspace.nodes.value" />
+      <MindMapCanvas
+        v-if="viewMode === 'graph'"
+        :map="workspace.selectedMap.value"
+        :nodes="workspace.nodes.value"
+        :selected-node-id="workspace.selectedNodeId.value"
+        @select-node="workspace.selectNode"
+        @preview-node="$emit('preview-node', $event)"
+      />
       <NodeTreeView
         v-else
         :map="workspace.selectedMap.value"

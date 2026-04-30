@@ -3,8 +3,8 @@ import { onMounted, ref } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import CreateMapPage from './components/CreateMapPage.vue';
 import FloatingMessage from './components/FloatingMessage.vue';
-import MapCanvasPlaceholder from './components/MapCanvasPlaceholder.vue';
 import MapSidebar from './components/MapSidebar.vue';
+import MindMapCanvas from './components/MindMapCanvas.vue';
 import NodePreviewDialog from './components/NodePreviewDialog.vue';
 import NodeTreeView from './components/NodeTreeView.vue';
 import ViewSwitcher from './components/ViewSwitcher.vue';
@@ -59,10 +59,14 @@ onMounted(async () => {
           @select-map="workspace.selectMap"
           @create-map="openCreatePage"
         />
-        <MapCanvasPlaceholder
+        <MindMapCanvas
           v-if="viewMode === 'graph'"
           :map="workspace.selectedMap.value"
           :nodes="workspace.nodes.value"
+          :selected-node-id="workspace.selectedNodeId.value"
+          :preview-on-click="workMode !== 'workbench'"
+          @select-node="workspace.selectNode"
+          @preview-node="preview"
         />
         <NodeTreeView
           v-else

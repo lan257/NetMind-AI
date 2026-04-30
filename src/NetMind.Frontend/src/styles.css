@@ -195,54 +195,21 @@ label {
   white-space: nowrap;
 }
 
-.graph-placeholder {
+.mind-map-canvas-wrap {
   position: relative;
+  height: calc(100vh - 220px);
   min-height: calc(100vh - 220px);
-  display: grid;
-  place-items: center;
   overflow: hidden;
-  border: 1px dashed #b9c8d7;
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(64, 158, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(rgba(64, 158, 255, 0.08) 1px, transparent 1px),
-    #fbfdff;
-  background-size: 28px 28px;
-}
-
-.graph-root {
-  min-width: 160px;
-  max-width: 320px;
-  padding: 16px 22px;
-  border: 1px solid #78b6e8;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #214f77;
-  font-weight: 700;
-  text-align: center;
-  box-shadow: 0 12px 28px rgba(44, 85, 120, 0.12);
-}
-
-.graph-spokes {
-  position: absolute;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  width: min(620px, 70%);
-  margin-top: 160px;
-}
-
-.graph-spokes span {
-  max-width: 180px;
-  padding: 8px 10px;
   border: 1px solid #d5e1ec;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #ffffff;
-  color: #526779;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.mind-map-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
 }
 
 .node-row-wrap {
@@ -337,7 +304,7 @@ label {
 
 .create-card {
   grid-template-rows: auto auto auto minmax(0, 1fr);
-  min-height: 560px;
+  min-height: 400px;
 }
 
 .create-preview-panel {
@@ -350,7 +317,8 @@ label {
   border: 0;
 }
 
-.create-preview-panel .graph-placeholder {
+.create-preview-panel .mind-map-canvas-wrap {
+  height: 360px;
   min-height: 360px;
 }
 
@@ -525,10 +493,8 @@ input[type="file"] {
     display: grid;
   }
 
-  .graph-spokes {
-    position: static;
-    width: 100%;
-    margin: 18px 0 0;
-    padding: 0 12px;
+  .mind-map-canvas-wrap {
+    height: 420px;
+    min-height: 420px;
   }
 }
