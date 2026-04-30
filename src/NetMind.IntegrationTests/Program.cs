@@ -8,6 +8,7 @@ var aiCleanService = new AiCleanService(
     {
         Prompt = new AiPromptOptions
         {
+            ContextCompressionThreshold = 100,
             SystemPromptLines = new[]
             {
                 "Return strict JSON only.",
@@ -18,6 +19,27 @@ var aiCleanService = new AiCleanService(
                 "Convert the user text into {{schemaVersion}}.",
                 "User text:",
                 "{{naturalLanguage}}"
+            },
+            RequirementPromptTemplateLines = new[]
+            {
+                "Structure requirement into {{schemaVersion}}.",
+                "Context:",
+                "{{context}}",
+                "Requirement:",
+                "{{requirement}}"
+            },
+            ContextChatPromptTemplateLines = new[]
+            {
+                "Return { \"reply\": \"...\" }.",
+                "Context:",
+                "{{context}}",
+                "Message:",
+                "{{message}}"
+            },
+            ContextCompressionPromptTemplateLines = new[]
+            {
+                "Compress context:",
+                "{{context}}"
             }
         },
         Models = new[]

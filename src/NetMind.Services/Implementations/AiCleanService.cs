@@ -20,6 +20,9 @@ public sealed class AiCleanService : IAiCleanService
     private readonly HttpClient _httpClient;
     private readonly string _systemPrompt;
     private readonly string _userPromptTemplate;
+    private readonly string _requirementPromptTemplate;
+    private readonly string _contextChatPromptTemplate;
+    private readonly string _contextCompressionPromptTemplate;
 
     public AiCleanService(AiCleanOptions options, HttpClient httpClient)
     {
@@ -27,6 +30,9 @@ public sealed class AiCleanService : IAiCleanService
         _httpClient = httpClient;
         _systemPrompt = JoinPromptLines(options.Prompt.SystemPromptLines, "AiClean:Prompt:SystemPromptLines");
         _userPromptTemplate = JoinPromptLines(options.Prompt.UserPromptTemplateLines, "AiClean:Prompt:UserPromptTemplateLines");
+        _requirementPromptTemplate = JoinPromptLines(options.Prompt.RequirementPromptTemplateLines, "AiClean:Prompt:RequirementPromptTemplateLines");
+        _contextChatPromptTemplate = JoinPromptLines(options.Prompt.ContextChatPromptTemplateLines, "AiClean:Prompt:ContextChatPromptTemplateLines");
+        _contextCompressionPromptTemplate = JoinPromptLines(options.Prompt.ContextCompressionPromptTemplateLines, "AiClean:Prompt:ContextCompressionPromptTemplateLines");
     }
 
     public IReadOnlyList<AiModelOptionDto> ListModels()
@@ -62,9 +68,7 @@ public sealed class AiCleanService : IAiCleanService
         {
             try
             {
-                var content = candidate.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase)
-                    ? await CallOllamaAsync(candidate, prompt)
-                    : await CallOpenAiCompatibleAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt);
 
                 var transfer = ParseTransfer(content);
                 ValidateTransfer(transfer);
@@ -73,6 +77,85 @@ public sealed class AiCleanService : IAiCleanService
                 {
                     SelectedModel = ToDto(candidate),
                     Prompt = prompt,
+                    Transfer = transfer,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"Primary model failed and fallback was used: {lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("No enabled AI cleaning model is configured.");
+    }
+
+    public async Task<AiContextChatResultDto> ChatWithContextAsync(AiContextChatRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new ArgumentException("Message input is required.", nameof(request));
+        }
+
+        var candidates = SelectModels(request.ModelId);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context);
+                var prompt = BuildContextChatPrompt(request.Message, contextResult.Context);
+                var content = await CallModelAsync(candidate, prompt);
+                var reply = ParseContextChatReply(content);
+
+                return new AiContextChatResultDto
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    Reply = reply,
+                    ContextSummary = contextResult.Context,
+                    WasContextCompressed = contextResult.WasCompressed,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"Primary model failed and fallback was used: {lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("No enabled AI cleaning model is configured.");
+    }
+
+    public async Task<AiRequirementStructureResultDto> StructureRequirementAsync(AiRequirementStructureRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Requirement))
+        {
+            throw new ArgumentException("Requirement input is required.", nameof(request));
+        }
+
+        var candidates = SelectModels(request.ModelId);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context);
+                var prompt = BuildRequirementPrompt(request.Requirement, contextResult.Context);
+                var content = await CallModelAsync(candidate, prompt);
+                var transfer = ParseTransfer(content);
+                ValidateTransfer(transfer);
+
+                return new AiRequirementStructureResultDto
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    ContextSummary = contextResult.Context,
+                    WasContextCompressed = contextResult.WasCompressed,
                     Transfer = transfer,
                     Warnings = lastError is null
                         ? Array.Empty<string>()
@@ -187,11 +270,32 @@ public sealed class AiCleanService : IAiCleanService
         return content ?? throw new InvalidOperationException($"AI model '{model.Id}' returned an empty response.");
     }
 
+    private Task<string> CallModelAsync(AiModelOptions model, string prompt)
+    {
+        return model.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase)
+            ? CallOllamaAsync(model, prompt)
+            : CallOpenAiCompatibleAsync(model, prompt);
+    }
+
     private static MindMapTransferDto ParseTransfer(string content)
     {
         var json = StripMarkdownFence(content.Trim());
         var transfer = JsonSerializer.Deserialize<MindMapTransferDto>(json, JsonOptions);
         return transfer ?? throw new InvalidOperationException("AI response cannot be parsed as a mind map transfer structure.");
+    }
+
+    private static string ParseContextChatReply(string content)
+    {
+        var value = StripMarkdownFence(content.Trim());
+        using var document = JsonDocument.Parse(value);
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("reply", out var reply))
+        {
+            throw new InvalidOperationException("AI chat response must contain a reply field.");
+        }
+
+        return reply.GetString()?.Trim()
+            ?? throw new InvalidOperationException("AI chat response reply is empty.");
     }
 
     private static void ValidateTransfer(MindMapTransferDto transfer)
@@ -235,6 +339,11 @@ public sealed class AiCleanService : IAiCleanService
 
         foreach (var relation in transfer.Relations)
         {
+            if (string.IsNullOrWhiteSpace(relation.SourceClientId) || string.IsNullOrWhiteSpace(relation.TargetClientId))
+            {
+                throw new InvalidOperationException("AI response relation endpoints are required.");
+            }
+
             if (!clientIds.Contains(relation.SourceClientId.Trim()) || !clientIds.Contains(relation.TargetClientId.Trim()))
             {
                 throw new InvalidOperationException("AI response relation endpoints must exist in nodes.");
@@ -257,6 +366,65 @@ public sealed class AiCleanService : IAiCleanService
         return _userPromptTemplate
             .Replace("{{schemaVersion}}", SchemaVersion, StringComparison.Ordinal)
             .Replace("{{naturalLanguage}}", naturalLanguage.Trim(), StringComparison.Ordinal);
+    }
+
+    private string BuildRequirementPrompt(string requirement, string context)
+    {
+        return _requirementPromptTemplate
+            .Replace("{{schemaVersion}}", SchemaVersion, StringComparison.Ordinal)
+            .Replace("{{requirement}}", requirement.Trim(), StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(context) ? "No additional context." : context.Trim(), StringComparison.Ordinal);
+    }
+
+    private string BuildContextChatPrompt(string message, string context)
+    {
+        return _contextChatPromptTemplate
+            .Replace("{{message}}", message.Trim(), StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(context) ? "No previous conversation." : context.Trim(), StringComparison.Ordinal);
+    }
+
+    private async Task<(string Context, bool WasCompressed)> CompressContextIfNeededAsync(AiModelOptions model, string? context)
+    {
+        var trimmed = context?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0)
+        {
+            return (string.Empty, false);
+        }
+
+        if (trimmed.Length <= Math.Max(_options.Prompt.ContextCompressionThreshold, 1))
+        {
+            return (trimmed, false);
+        }
+
+        var prompt = _contextCompressionPromptTemplate
+            .Replace("{{context}}", trimmed, StringComparison.Ordinal);
+        var compressed = ParseContextSummary(await CallModelAsync(model, prompt));
+        if (string.IsNullOrWhiteSpace(compressed))
+        {
+            throw new InvalidOperationException($"AI model '{model.Id}' returned an empty context summary.");
+        }
+
+        return (compressed, true);
+    }
+
+    private static string ParseContextSummary(string content)
+    {
+        var value = StripMarkdownFence(content.Trim());
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("summary", out var summary))
+            {
+                return summary.GetString()?.Trim() ?? string.Empty;
+            }
+        }
+        catch (JsonException)
+        {
+            return value;
+        }
+
+        return value;
     }
 
     private static string JoinPromptLines(IReadOnlyList<string> lines, string configPath)

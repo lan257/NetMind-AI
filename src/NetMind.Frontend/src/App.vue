@@ -15,6 +15,10 @@ const fileInput = ref(null);
 const aiModels = ref([]);
 const selectedAiModelId = ref('');
 const naturalLanguageInput = ref('');
+const aiStatus = ref('');
+const chatOpen = ref(false);
+const chatInput = ref('');
+const chatMessages = ref([]);
 const loading = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
@@ -69,6 +73,7 @@ const visualNodes = computed(() => {
   walk(0, 0);
   return result;
 });
+const chatContextText = computed(() => buildConversationContext());
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers ?? {}) };
@@ -473,6 +478,8 @@ async function cleanNaturalLanguage() {
     return;
   }
 
+  transferText.value = '';
+  aiStatus.value = 'AI is cleaning the text...';
   const result = await run(
     () => api('/api/ai/clean', {
       method: 'POST',
@@ -486,6 +493,91 @@ async function cleanNaturalLanguage() {
 
   if (result) {
     transferText.value = JSON.stringify(result.transfer, null, 2);
+    aiStatus.value = 'AI structure cleaned';
+  } else {
+    aiStatus.value = '';
+  }
+}
+
+function openChat() {
+  chatOpen.value = true;
+}
+
+function closeChat() {
+  chatOpen.value = false;
+}
+
+function startNewConversation() {
+  chatMessages.value = [];
+  chatInput.value = '';
+  aiStatus.value = '已开始新对话';
+}
+
+function buildConversationContext(messages = chatMessages.value) {
+  return messages
+    .map((message) => `${message.role === 'user' ? 'User' : 'AI'}: ${message.content}`)
+    .join('\n\n');
+}
+
+async function sendChatMessage() {
+  const message = chatInput.value.trim();
+  if (!message) {
+    errorMessage.value = '请输入对话内容';
+    return;
+  }
+
+  const previousContext = buildConversationContext();
+  chatMessages.value.push({ role: 'user', content: message });
+  chatInput.value = '';
+  aiStatus.value = 'AI 正在回复...';
+
+  const result = await run(
+    () => api('/api/ai/context-chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        context: previousContext,
+        modelId: selectedAiModelId.value || null
+      })
+    }),
+    'AI 已回复'
+  );
+
+  if (result) {
+    chatMessages.value.push({ role: 'assistant', content: result.reply });
+    aiStatus.value = result.wasContextCompressed
+      ? 'AI 已回复，较长对话上下文已先压缩'
+      : 'AI 已回复';
+  } else {
+    aiStatus.value = '';
+  }
+}
+
+async function cleanConversationContext() {
+  const context = chatContextText.value.trim();
+  if (!context) {
+    errorMessage.value = '请先开始一轮对话';
+    return;
+  }
+
+  transferText.value = '';
+  aiStatus.value = 'AI 正在根据本次对话生成结构体...';
+  const result = await run(
+    () => api('/api/ai/clean', {
+      method: 'POST',
+      body: JSON.stringify({
+        naturalLanguage: context,
+        modelId: selectedAiModelId.value || null
+      })
+    }),
+    '本次对话已生成结构体'
+  );
+
+  if (result) {
+    transferText.value = JSON.stringify(result.transfer, null, 2);
+    aiStatus.value = '本次对话已生成结构体';
+  } else {
+    aiStatus.value = '';
   }
 }
 
@@ -498,7 +590,7 @@ onMounted(async () => {
   <main class="workspace">
     <header class="topbar">
       <div>
-        <p class="eyebrow">P1.2</p>
+        <p class="eyebrow">P1.3</p>
         <h1>NetMind</h1>
       </div>
       <div class="topbar-actions">
@@ -570,16 +662,20 @@ onMounted(async () => {
             <h2>AI Clean</h2>
             <span>{{ aiModels.length }} model</span>
           </div>
-          <div class="field-row transfer-import-row">
+          <div class="field-row ai-actions">
             <select v-model="selectedAiModelId" data-testid="ai-model">
               <option v-for="model in aiModels" :key="model.id" :value="model.id">
                 {{ model.name }}
               </option>
             </select>
             <button type="button" data-testid="ai-clean" @click="cleanNaturalLanguage" :disabled="loading">
-              Clean to structure
+              自然语言清洗
+            </button>
+            <button type="button" data-testid="ai-open-chat" @click="openChat" :disabled="loading">
+              需求对话
             </button>
           </div>
+          <p v-if="aiStatus" class="inline-status" data-testid="ai-status">{{ aiStatus }}</p>
           <textarea
             v-model="naturalLanguageInput"
             data-testid="ai-natural-language"
@@ -695,6 +791,41 @@ onMounted(async () => {
           <div v-if="selectedNode && selectedNodeRelations.length === 0" class="empty small">No relation for this node.</div>
         </div>
       </aside>
+    </section>
+
+    <section v-if="chatOpen" class="modal-backdrop" data-testid="ai-chat-modal">
+      <div class="chat-modal">
+        <div class="section-heading">
+          <h2>需求对话</h2>
+          <span>{{ chatMessages.length }} 条消息</span>
+        </div>
+        <div class="chat-log">
+          <div v-if="chatMessages.length === 0" class="empty small">本次对话还没有消息。</div>
+          <div
+            v-for="(message, index) in chatMessages"
+            :key="index"
+            class="chat-message"
+            :class="message.role"
+          >
+            <strong>{{ message.role === 'user' ? '你' : 'AI' }}</strong>
+            <p>{{ message.content }}</p>
+          </div>
+        </div>
+        <textarea
+          v-model="chatInput"
+          data-testid="ai-chat-input"
+          rows="4"
+          placeholder="围绕需求继续对话，本次对话记录会作为程序管理的上下文。"
+        ></textarea>
+        <div class="chat-actions">
+          <button type="button" data-testid="ai-chat-send" @click="sendChatMessage" :disabled="loading">发送</button>
+          <button type="button" data-testid="ai-new-chat" @click="startNewConversation" :disabled="loading">新对话</button>
+          <button type="button" data-testid="ai-chat-clean" @click="cleanConversationContext" :disabled="loading || chatMessages.length === 0">
+            生成结构体
+          </button>
+          <button type="button" @click="closeChat" :disabled="loading">关闭</button>
+        </div>
+      </div>
     </section>
   </main>
 </template>

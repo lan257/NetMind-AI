@@ -203,10 +203,20 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration)
         Models = models,
         Prompt = new AiPromptOptions
         {
+            ContextCompressionThreshold = ReadInt(promptSection["ContextCompressionThreshold"], 4000),
             SystemPromptLines = promptSection.GetSection("SystemPromptLines").GetChildren()
                 .Select(section => section.Value ?? string.Empty)
                 .ToList(),
             UserPromptTemplateLines = promptSection.GetSection("UserPromptTemplateLines").GetChildren()
+                .Select(section => section.Value ?? string.Empty)
+                .ToList(),
+            RequirementPromptTemplateLines = promptSection.GetSection("RequirementPromptTemplateLines").GetChildren()
+                .Select(section => section.Value ?? string.Empty)
+                .ToList(),
+            ContextChatPromptTemplateLines = promptSection.GetSection("ContextChatPromptTemplateLines").GetChildren()
+                .Select(section => section.Value ?? string.Empty)
+                .ToList(),
+            ContextCompressionPromptTemplateLines = promptSection.GetSection("ContextCompressionPromptTemplateLines").GetChildren()
                 .Select(section => section.Value ?? string.Empty)
                 .ToList()
         }

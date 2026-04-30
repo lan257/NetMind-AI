@@ -34,4 +34,30 @@ public sealed class AiController : ControllerBase
             return BadRequest(ApiResult<AiCleanResultDto>.Fail(ex.Message));
         }
     }
+
+    [HttpPost("requirements/structure")]
+    public async Task<ActionResult<ApiResult<AiRequirementStructureResultDto>>> StructureRequirementAsync(AiRequirementStructureRequest request)
+    {
+        try
+        {
+            return ApiResult<AiRequirementStructureResultDto>.Ok(await _aiCleanService.StructureRequirementAsync(request));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            return BadRequest(ApiResult<AiRequirementStructureResultDto>.Fail(ex.Message));
+        }
+    }
+
+    [HttpPost("context-chat")]
+    public async Task<ActionResult<ApiResult<AiContextChatResultDto>>> ChatWithContextAsync(AiContextChatRequest request)
+    {
+        try
+        {
+            return ApiResult<AiContextChatResultDto>.Ok(await _aiCleanService.ChatWithContextAsync(request));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            return BadRequest(ApiResult<AiContextChatResultDto>.Fail(ex.Message));
+        }
+    }
 }

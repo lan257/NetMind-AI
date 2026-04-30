@@ -192,15 +192,20 @@ public sealed class MindMapTransferService : IMindMapTransferService
             throw new ArgumentException("Mind map title is required.", nameof(transfer));
         }
 
+        if (transfer.Nodes.Count == 0)
+        {
+            throw new ArgumentException("Mind map must contain at least one node.", nameof(transfer));
+        }
+
         var clientIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in transfer.Nodes)
         {
-            var clientId = node.ClientId.Trim();
-            if (string.IsNullOrWhiteSpace(clientId))
+            if (string.IsNullOrWhiteSpace(node.ClientId))
             {
                 throw new ArgumentException("Node clientId is required.", nameof(transfer));
             }
 
+            var clientId = node.ClientId.Trim();
             if (!clientIds.Add(clientId))
             {
                 throw new ArgumentException($"Duplicate node clientId '{clientId}'.", nameof(transfer));
@@ -222,6 +227,11 @@ public sealed class MindMapTransferService : IMindMapTransferService
 
         foreach (var relation in transfer.Relations)
         {
+            if (string.IsNullOrWhiteSpace(relation.SourceClientId) || string.IsNullOrWhiteSpace(relation.TargetClientId))
+            {
+                throw new ArgumentException("Relation source and target are required.", nameof(transfer));
+            }
+
             if (!clientIds.Contains(relation.SourceClientId.Trim()) || !clientIds.Contains(relation.TargetClientId.Trim()))
             {
                 throw new ArgumentException("Relation source and target must exist in nodes.", nameof(transfer));

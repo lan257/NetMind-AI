@@ -34,7 +34,15 @@ public sealed class AiModelOptions
 
 public sealed class AiPromptOptions
 {
+    public int ContextCompressionThreshold { get; init; } = 4000;
+
     public IReadOnlyList<string> SystemPromptLines { get; init; } = Array.Empty<string>();
 
     public IReadOnlyList<string> UserPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> RequirementPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> ContextChatPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> ContextCompressionPromptTemplateLines { get; init; } = Array.Empty<string>();
 }

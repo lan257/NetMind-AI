@@ -1,14 +1,15 @@
 # AI 大模型配置说明
 
-## P1.2 配置目标
+## P1.3 配置目标
 
-P1.2 开始移除本地模拟清洗，AI 清洗统一通过配置文件中的真实模型接口完成。
+P1.3 在真实模型清洗基础上，新增带用户上下文的需求结构化拆解能力。AI 清洗和需求结构化统一通过配置文件中的模型与提示词完成。
 
 - 云模型优先：默认使用 DeepSeek 云接口。
 - 本地模型备用：DeepSeek 不可用且未指定 `modelId` 时，回退到本机 Ollama。
 - 配置来源：`src/NetMind.WebApi/appsettings.json` 与 `appsettings.Development.json`。
 - 密钥来源：优先使用环境变量，不建议将密钥明文写入仓库配置。
 - 提示词来源：统一放在 `AiClean:Prompt` 配置段，服务代码只负责读取、替换占位符和发起请求。
+- 上下文压缩：当用户上下文超过 `ContextCompressionThreshold` 时，先调用同一模型压缩上下文，再进入需求结构化提示词。
 
 ## 当前模型配置
 
@@ -35,10 +36,34 @@ P1.2 开始移除本地模拟清洗，AI 清洗统一通过配置文件中的真
         "Return strict JSON only.",
         "Do not wrap the response in markdown."
       ],
+      "ContextCompressionThreshold": 4000,
       "UserPromptTemplateLines": [
         "You are an expert in knowledge structuring and concept modeling.",
         "User text:",
         "{{naturalLanguage}}"
+      ],
+      "RequirementPromptTemplateLines": [
+        "You are a senior product analyst and knowledge architect.",
+        "Context:",
+        "{{context}}",
+        "User requirement:",
+        "{{requirement}}"
+      ],
+      "ContextChatPromptTemplateLines": [
+        "You are a requirements clarification assistant for NetMind.",
+        "Do not use a fixed checklist. Choose clarification dimensions dynamically according to the requirement type.",
+        "Ask only the most important 1 to 3 follow-up questions each turn.",
+        "Return JSON only in this shape: { \"reply\": \"assistant response\" }.",
+        "Previous conversation:",
+        "{{context}}",
+        "Latest user message:",
+        "{{message}}"
+      ],
+      "ContextCompressionPromptTemplateLines": [
+        "Compress the following user context for a later requirement-structuring task.",
+        "Return JSON only in this shape: { \"summary\": \"concise compressed context\" }.",
+        "Context:",
+        "{{context}}"
       ]
     },
     "Models": [
@@ -73,12 +98,18 @@ P1.2 开始移除本地模拟清洗，AI 清洗统一通过配置文件中的真
   用于输出结构版本，当前固定替换为 `netmind.mindmap.v1`。
 - `{{naturalLanguage}}`
   用于插入用户原始输入文本。
+- `{{requirement}}`
+  用于插入用户不成熟、待拆解的需求文本。
+- `{{context}}`
+  用于插入程序从本次对话记录中自动组装的上下文；当上下文过长时，该占位符会接收压缩后的上下文摘要。
+- `{{message}}`
+  用于插入对话弹窗中的最新一条用户消息。
 
 约束：
 
 - 未在服务端支持的占位符不会被替换。
 - 模板中必须保留输出结构要求，否则模型可能返回不可导入的数据。
-- `SystemPromptLines` 与 `UserPromptTemplateLines` 至少各配置一行，否则服务启动后调用会报配置错误。
+- `SystemPromptLines`、`UserPromptTemplateLines`、`RequirementPromptTemplateLines`、`ContextChatPromptTemplateLines`、`ContextCompressionPromptTemplateLines` 至少各配置一行，否则服务启动后调用会报配置错误。
 
 ## 提示词编写规范
 
@@ -136,6 +167,13 @@ P1.2 开始移除本地模拟清洗，AI 清洗统一通过配置文件中的真
 - DeepSeek：运行服务前设置环境变量 `DEEPSEEK_API_KEY`，或在本地开发时按需配置 `ApiKey`。
 - Ollama：本地启动 Ollama，并确认模型名与配置中的 `Model` 一致。
 - AI 返回必须是 `netmind.mindmap.v1` JSON；后端会继续校验结构版本、节点、父子关系和关联端点。
+
+## P1.3 接口
+
+- `POST /api/ai/clean`：清洗自然语言，返回标准导图结构。
+- `POST /api/ai/context-chat`：接收最新消息和程序自动组装的本次对话上下文，返回本轮 AI 回复。该接口用于需求澄清，不使用固定维度模板，而是按需求类型动态选择追问方向。
+- `POST /api/ai/requirements/structure`：接收 `requirement`、程序自动组装的 `context`、`modelId`，先按阈值压缩长上下文，再让 AI 将不成熟需求拆解为标准导图结构。
+- 前端“生成结构体”复用 `POST /api/ai/clean`，把本次对话上下文作为 `naturalLanguage` 输入生成标准结构体，与原 AI 清洗逻辑保持一致。
 
 ## 数据库配置
 

@@ -11,7 +11,7 @@ public sealed class ProjectStatusRepository : IProjectStatusRepository
         var status = new ProjectStatusViewModel
         {
             ProjectName = "NetMind",
-            Phase = "P1.2",
+            Phase = "P1.3",
             Runtime = ".NET 8",
             Frontend = "Vue3/HTML5 shell"
         };

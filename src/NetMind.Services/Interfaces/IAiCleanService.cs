@@ -7,4 +7,8 @@ public interface IAiCleanService
     IReadOnlyList<AiModelOptionDto> ListModels();
 
     Task<AiCleanResultDto> CleanAsync(AiCleanRequest request);
+
+    Task<AiRequirementStructureResultDto> StructureRequirementAsync(AiRequirementStructureRequest request);
+
+    Task<AiContextChatResultDto> ChatWithContextAsync(AiContextChatRequest request);
 }
