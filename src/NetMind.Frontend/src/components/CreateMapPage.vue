@@ -110,7 +110,12 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
       />
     </section>
 
-    <el-dialog v-model="workspace.chatOpen.value" title="需求对话" width="760px">
+    <el-dialog
+      v-model="workspace.chatOpen.value"
+      title="需求对话"
+      width="min(760px, calc(100vw - 32px))"
+      class="chat-dialog"
+    >
       <div class="chat-log">
         <div v-if="workspace.chatMessages.value.length === 0" class="empty small">本次对话还没有消息。</div>
         <div
@@ -131,13 +136,15 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
         placeholder="围绕需求继续对话，本次对话记录会作为程序管理的上下文。"
       />
       <template #footer>
-        <el-button data-testid="ai-new-chat" @click="workspace.startNewConversation">新对话</el-button>
-        <el-button data-testid="ai-chat-clean" :disabled="workspace.chatMessages.value.length === 0" @click="workspace.cleanConversationContext">
-          生成结构体
-        </el-button>
-        <el-button type="primary" data-testid="ai-chat-send" :loading="workspace.loading.value" @click="workspace.sendChatMessage">
-          发送
-        </el-button>
+        <div class="chat-dialog-footer">
+          <el-button data-testid="ai-new-chat" @click="workspace.startNewConversation">新对话</el-button>
+          <el-button data-testid="ai-chat-clean" :disabled="workspace.chatMessages.value.length === 0" @click="workspace.cleanConversationContext">
+            生成结构体
+          </el-button>
+          <el-button type="primary" data-testid="ai-chat-send" :loading="workspace.loading.value" @click="workspace.sendChatMessage">
+            发送
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </section>

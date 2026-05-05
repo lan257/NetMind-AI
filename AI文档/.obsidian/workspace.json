@@ -55,12 +55,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "开发日志/总开发进度.md",
+                "file": "开发日志/P2开发日志.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "总开发进度"
+              "title": "P2开发日志"
             }
           }
         ],
@@ -228,11 +228,13 @@
   },
   "active": "8e9d89ec17846274",
   "lastOpenFiles": [
-    "开发日志/P0开发日志.md",
-    "开发日志/P1开发日志.md",
     "项目必读.md",
-    "项目/项目研发说明.md",
+    "开发日志/P2开发日志.md",
+    "开发日志/P1开发日志.md",
+    "开发日志/P2开发日志.md.tmp.25184.1777943756876",
     "开发日志/总开发进度.md",
+    "开发日志/P0开发日志.md",
+    "项目/项目研发说明.md",
     "随记.md",
     "随记.txt",
     "新建 文本文档.txt",
@@ -249,7 +251,6 @@
     "Smoke",
     "SQL/P0.3_AddLogicalDelete.sql",
     "SQL/Init.sql",
-    "SQL",
     "项目说明.md",
     "阶段开发与人工验收细化模板.md",
     "金析为证_NET开发规范_v1.0_20260317.md",

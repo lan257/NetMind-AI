@@ -11,7 +11,7 @@ defineEmits(['update:modelValue']);
   <el-dialog
     :model-value="modelValue"
     :title="node?.title ?? '节点内容'"
-    width="720px"
+    width="min(720px, calc(100vw - 32px))"
     class="node-preview-dialog"
     :close-on-click-modal="false"
     @update:model-value="$emit('update:modelValue', $event)"

@@ -285,6 +285,16 @@ label {
   margin-top: 4px;
 }
 
+.button-grid .el-button,
+.inspector > .el-button {
+  width: 100%;
+  margin-left: 0;
+}
+
+.inspector .el-input-number {
+  width: 100%;
+}
+
 .create-page {
   display: grid;
   gap: 14px;
@@ -323,7 +333,7 @@ label {
 }
 
 .ai-actions {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(150px, 0.55fr));
 }
 
 .inline-status {
@@ -336,6 +346,13 @@ label {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.ai-actions .el-button,
+.transfer-actions .el-button,
+.chat-dialog-footer .el-button {
+  width: 100%;
+  margin-left: 0;
 }
 
 .transfer-import-row {
@@ -352,7 +369,7 @@ input[type="file"] {
 .chat-log {
   display: grid;
   gap: 10px;
-  max-height: 360px;
+  max-height: min(360px, calc(100vh - 320px));
   overflow: auto;
   margin-bottom: 12px;
   padding: 10px;
@@ -382,6 +399,25 @@ input[type="file"] {
   white-space: pre-wrap;
 }
 
+.chat-dialog.el-dialog,
+.chat-dialog .el-dialog {
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-dialog.el-dialog .el-dialog__body,
+.chat-dialog .el-dialog__body {
+  flex: 1;
+  overflow: auto;
+}
+
+.chat-dialog-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .relation-list {
   display: grid;
   gap: 8px;
@@ -405,13 +441,15 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+.node-preview-dialog.el-dialog,
 .node-preview-dialog .el-dialog {
-  height: 520px;
-  max-height: 520px;
+  height: min(520px, calc(100vh - 32px));
+  max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
 }
 
+.node-preview-dialog.el-dialog .el-dialog__body,
 .node-preview-dialog .el-dialog__body {
   flex: 1;
   overflow: auto;
@@ -421,7 +459,7 @@ input[type="file"] {
   display: grid;
   gap: 14px;
   align-content: start;
-  min-height: 390px;
+  min-height: min(390px, calc(100vh - 162px));
   color: #263747;
 }
 
@@ -485,7 +523,8 @@ input[type="file"] {
   .transfer-actions,
   .ai-actions,
   .transfer-import-row,
-  .button-grid {
+  .button-grid,
+  .chat-dialog-footer {
     grid-template-columns: 1fr;
   }
 
