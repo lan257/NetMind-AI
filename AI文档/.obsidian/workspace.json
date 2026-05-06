@@ -8,20 +8,6 @@
         "type": "tabs",
         "children": [
           {
-            "id": "8e9d89ec17846274",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "部署文档.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "部署文档"
-            }
-          },
-          {
             "id": "e55756606c6cb00f",
             "type": "leaf",
             "state": {
@@ -35,8 +21,7 @@
               "title": "随记"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -200,16 +185,16 @@
   },
   "active": "e55756606c6cb00f",
   "lastOpenFiles": [
-    "开发日志/P2开发日志.md",
+    "开发日志/总开发进度.md",
     "部署文档.md",
+    "开发日志/P0开发日志.md",
+    "开发日志/P1开发日志.md",
+    "开发日志/P2开发日志.md",
     "随记.md",
     "项目必读.md",
     "开发规范.md",
-    "开发日志/总开发进度.md",
     "项目/项目研发说明.md",
     "项目/项目结构速查.md",
-    "开发日志/P0开发日志.md",
-    "开发日志/P1开发日志.md",
     "开发日志/P2开发日志.md.tmp.25184.1777943756876",
     "随记.txt",
     "新建 文本文档.txt",
