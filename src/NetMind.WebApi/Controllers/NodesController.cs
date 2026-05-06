@@ -51,7 +51,7 @@ public sealed class NodesController : ControllerBase
             var updated = await _nodeService.UpdateAsync(id, request);
             return updated is null ? NotFound(ApiResult<NodeDto>.Fail("节点或父节点不存在。")) : ApiResult<NodeDto>.Ok(updated);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return BadRequest(ApiResult<NodeDto>.Fail(ex.Message));
         }

@@ -34,6 +34,17 @@ public sealed class NodeService : INodeService
     public async Task<NodeDto?> UpdateAsync(long id, UpdateNodeRequest request)
     {
         var title = RequireText(request.Title, nameof(request.Title));
+        var current = await _repository.GetAsync(id);
+        if (current is null)
+        {
+            return null;
+        }
+
+        if (await _repository.ExistsSiblingOrderNoAsync(current.MapId, request.ParentId, request.OrderNo, id))
+        {
+            throw new InvalidOperationException("同级节点排序不能重复。");
+        }
+
         var entity = await _repository.UpdateAsync(id, request.ParentId, title, request.Content, request.OrderNo);
         return entity is null ? null : ToDto(entity);
     }

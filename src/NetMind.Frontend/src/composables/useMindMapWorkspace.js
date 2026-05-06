@@ -243,6 +243,19 @@ export function useMindMapWorkspace() {
     }
   }
 
+  async function createCanvasNode(payload = {}) {
+    const previousForm = { ...nodeForm.value };
+    nodeForm.value = {
+      title: payload.title ?? '新节点',
+      content: payload.content ?? '',
+      orderNo: payload.orderNo ?? (nodes.value.length + 1)
+    };
+    await createNode(payload.parentId ?? null);
+    if (!selectedNode.value) {
+      nodeForm.value = previousForm;
+    }
+  }
+
   async function updateNode() {
     if (!selectedNode.value) {
       showToast('error', '请先选择节点');
@@ -271,6 +284,20 @@ export function useMindMapWorkspace() {
     if (updated) {
       await refreshMapData(selectedMap.value.id, { keepNodeId: updated.id });
     }
+  }
+
+  async function updateCanvasNode(payload = {}) {
+    if (!selectedNode.value) {
+      showToast('error', '请先选择节点');
+      return;
+    }
+
+    nodeForm.value = {
+      title: payload.title ?? selectedNode.value.title,
+      content: payload.content ?? selectedNode.value.content ?? '',
+      orderNo: payload.orderNo ?? selectedNode.value.orderNo
+    };
+    await updateNode();
   }
 
   async function deleteNode(subtree) {
@@ -547,7 +574,9 @@ export function useMindMapWorkspace() {
     createMap,
     selectNode,
     createNode,
+    createCanvasNode,
     updateNode,
+    updateCanvasNode,
     deleteNode,
     createRelation,
     deleteRelation,

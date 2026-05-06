@@ -63,10 +63,16 @@ onMounted(async () => {
           v-if="viewMode === 'graph'"
           :map="workspace.selectedMap.value"
           :nodes="workspace.nodes.value"
+          :relations="workspace.relations.value"
           :selected-node-id="workspace.selectedNodeId.value"
+          :editable="workMode === 'workbench'"
+          :loading="workspace.loading.value"
           :preview-on-click="workMode !== 'workbench'"
           @select-node="workspace.selectNode"
           @preview-node="preview"
+          @create-node="workspace.createCanvasNode"
+          @update-node="workspace.updateCanvasNode"
+          @delete-node="workspace.deleteNode(false)"
         />
         <NodeTreeView
           v-else
@@ -107,6 +113,12 @@ onMounted(async () => {
       @preview-node="preview"
     />
 
-    <NodePreviewDialog v-model="previewOpen" :node="previewNode" />
+    <NodePreviewDialog
+      v-model="previewOpen"
+      :node="previewNode"
+      :nodes="workspace.nodes.value"
+      :relations="workspace.relations.value"
+      @preview-node="preview"
+    />
   </main>
 </template>

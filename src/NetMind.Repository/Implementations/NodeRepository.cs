@@ -55,6 +55,30 @@ public sealed class NodeRepository : INodeRepository
         return await reader.ReadAsync() ? ReadNode(reader) : null;
     }
 
+    public async Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM node
+                WHERE map_id = @map_id
+                  AND parent_id IS NOT DISTINCT FROM @parent_id
+                  AND order_no = @order_no
+                  AND id <> @exclude_node_id
+                  AND is_deleted = FALSE
+            );
+            """,
+            connection);
+        command.Parameters.AddWithValue("map_id", mapId);
+        command.Parameters.Add("parent_id", NpgsqlTypes.NpgsqlDbType.Bigint).Value = (object?)parentId ?? DBNull.Value;
+        command.Parameters.AddWithValue("order_no", orderNo);
+        command.Parameters.AddWithValue("exclude_node_id", excludeNodeId);
+
+        return (bool)(await command.ExecuteScalarAsync() ?? false);
+    }
+
     public async Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo)
     {
         await using var connection = await _connectionFactory.OpenAsync();

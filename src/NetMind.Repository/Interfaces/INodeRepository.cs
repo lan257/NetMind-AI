@@ -8,6 +8,8 @@ public interface INodeRepository
 
     Task<NodeEntity?> GetAsync(long id);
 
+    Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId);
+
     Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo);
 
     Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo);

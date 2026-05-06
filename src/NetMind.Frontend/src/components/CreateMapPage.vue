@@ -1,5 +1,6 @@
 <script setup>
 import { ChatDotRound, Download, MagicStick, Upload } from '@element-plus/icons-vue';
+import { renderMarkdown } from '../composables/useMarkdown';
 import MindMapCanvas from './MindMapCanvas.vue';
 import NodeTreeView from './NodeTreeView.vue';
 
@@ -96,6 +97,7 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
         v-if="viewMode === 'graph'"
         :map="workspace.selectedMap.value"
         :nodes="workspace.nodes.value"
+        :relations="workspace.relations.value"
         :selected-node-id="workspace.selectedNodeId.value"
         @select-node="workspace.selectNode"
         @preview-node="$emit('preview-node', $event)"
@@ -125,7 +127,7 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
           :class="message.role"
         >
           <strong>{{ message.role === 'user' ? '你' : 'AI' }}</strong>
-          <p>{{ message.content }}</p>
+          <div class="markdown-body" v-html="renderMarkdown(message.content)"></div>
         </div>
       </div>
       <el-input
