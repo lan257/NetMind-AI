@@ -465,7 +465,7 @@ public sealed class AiCleanService : IAiCleanService
 
         return string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable)
             ? null
-            : Environment.GetEnvironmentVariable(model.ApiKeyEnvironmentVariable);
+            : Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
     }
 
     private static string StripMarkdownFence(string value)

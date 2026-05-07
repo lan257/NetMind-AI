@@ -10,4 +10,8 @@
     <ProjectReference Include="..\NetMind.Services\NetMind.Services.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Config\AiCleanPrompts\*.prompt.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

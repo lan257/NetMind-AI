@@ -1,14 +1,14 @@
 # AI 大模型配置说明
 
-## P1.3 配置目标
+## P3.0 配置目标
 
-P1.3 在真实模型清洗基础上，新增带用户上下文的需求结构化拆解能力。AI 清洗和需求结构化统一通过配置文件中的模型与提示词完成。
+P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettings.json` / `appsettings.Development.json` 管理，真实 API Key 不再写入仓库；长 Prompt 迁移到独立中文文本配置文件，便于直接阅读、编辑和评审。
 
 - 云模型优先：默认使用 DeepSeek 云接口。
 - 本地模型备用：DeepSeek 不可用且未指定 `modelId` 时，回退到本机 Ollama。
-- 配置来源：`src/NetMind.WebApi/appsettings.json` 与 `appsettings.Development.json`。
-- 密钥来源：优先使用环境变量，不建议将密钥明文写入仓库配置。
-- 提示词来源：统一放在 `AiClean:Prompt` 配置段，服务代码只负责读取、替换占位符和发起请求。
+- 模型配置来源：`src/NetMind.WebApi/appsettings.json` 与 `src/NetMind.WebApi/appsettings.Development.json`。
+- 密钥来源：只通过环境变量读取，当前 DeepSeek 使用 `DEEPSEEK_API_KEY`。
+- 提示词来源：`src/NetMind.WebApi/Config/AiCleanPrompts/*.prompt.md`。
 - 上下文压缩：当用户上下文超过 `ContextCompressionThreshold` 时，先调用同一模型压缩上下文，再进入需求结构化提示词。
 
 ## 当前模型配置
@@ -18,12 +18,12 @@ P1.3 在真实模型清洗基础上，新增带用户上下文的需求结构化
 | id | 名称 | provider | endpoint | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `deepseek-cloud` | DeepSeek Cloud | `deepseek` | `https://api.deepseek.com/chat/completions` | `enabled` | 默认云模型，使用 OpenAI-compatible Chat Completions 格式。 |
-| `ollama-local` | Ollama Local | `ollama` | `http://localhost:11434/api/chat` | `enabled` | 本地备用模型，需要本机 Ollama 已启动并拉取配置的模型。 |
+| `ollama-local` / `ollama-local-qwen` | Ollama Local | `ollama` | `http://127.0.0.1:11434/api/chat` | `enabled` | 本地备用模型，需要本机 Ollama 已启动并拉取配置的模型。 |
 
 默认选择规则：
 
 - 未传 `modelId` 时，优先使用 `IsDefault=true` 的云模型 `deepseek-cloud`。
-- 云模型请求失败且未指定 `modelId` 时，自动尝试本地 `ollama-local`。
+- 云模型请求失败且未指定 `modelId` 时，自动尝试本地 Ollama 模型。
 - 传入明确 `modelId` 时只调用该模型；模型不存在、未启用或调用失败时直接返回错误。
 
 ## 配置结构
@@ -32,39 +32,14 @@ P1.3 在真实模型清洗基础上，新增带用户上下文的需求结构化
 {
   "AiClean": {
     "Prompt": {
-      "SystemPromptLines": [
-        "Return strict JSON only.",
-        "Do not wrap the response in markdown."
-      ],
       "ContextCompressionThreshold": 4000,
-      "UserPromptTemplateLines": [
-        "You are an expert in knowledge structuring and concept modeling.",
-        "User text:",
-        "{{naturalLanguage}}"
-      ],
-      "RequirementPromptTemplateLines": [
-        "You are a senior product analyst and knowledge architect.",
-        "Context:",
-        "{{context}}",
-        "User requirement:",
-        "{{requirement}}"
-      ],
-      "ContextChatPromptTemplateLines": [
-        "You are a requirements clarification assistant for NetMind.",
-        "Do not use a fixed checklist. Choose clarification dimensions dynamically according to the requirement type.",
-        "Ask only the most important 1 to 3 follow-up questions each turn.",
-        "Return JSON only in this shape: { \"reply\": \"assistant response\" }.",
-        "Previous conversation:",
-        "{{context}}",
-        "Latest user message:",
-        "{{message}}"
-      ],
-      "ContextCompressionPromptTemplateLines": [
-        "Compress the following user context for a later requirement-structuring task.",
-        "Return JSON only in this shape: { \"summary\": \"concise compressed context\" }.",
-        "Context:",
-        "{{context}}"
-      ]
+      "PromptFiles": {
+        "System": "Config/AiCleanPrompts/system.prompt.md",
+        "User": "Config/AiCleanPrompts/mind-map-clean.prompt.md",
+        "Requirement": "Config/AiCleanPrompts/requirement-structure.prompt.md",
+        "ContextChat": "Config/AiCleanPrompts/context-chat.prompt.md",
+        "ContextCompression": "Config/AiCleanPrompts/context-compression.prompt.md"
+      }
     },
     "Models": [
       {
@@ -76,115 +51,73 @@ P1.3 在真实模型清洗基础上，新增带用户上下文的需求结构化
         "IsDefault": true,
         "ApiKeyEnvironmentVariable": "DEEPSEEK_API_KEY",
         "TimeoutSeconds": 60
-      },
-      {
-        "Id": "ollama-local",
-        "Provider": "ollama",
-        "Endpoint": "http://localhost:11434/api/chat",
-        "Model": "Qwen3.5 27b",
-        "Enabled": true,
-        "TimeoutSeconds": 120
       }
     ]
   }
 }
 ```
 
+后端仍保留旧的 `SystemPromptLines`、`UserPromptTemplateLines` 等数组读取作为兼容路径，但新配置优先使用 `PromptFiles`。
+
+## Prompt 文件
+
+| 配置键 | 文件 | 用途 |
+| --- | --- | --- |
+| `System` | `system.prompt.md` | 稳定系统约束，例如只返回 JSON、不要 Markdown 包裹。 |
+| `User` | `mind-map-clean.prompt.md` | 自然语言清洗为标准导图结构。 |
+| `Requirement` | `requirement-structure.prompt.md` | 将不成熟需求结合上下文拆解为结构化导图。 |
+| `ContextChat` | `context-chat.prompt.md` | 需求澄清对话回复。 |
+| `ContextCompression` | `context-compression.prompt.md` | 长上下文压缩。 |
+
+Prompt 文件会随 `NetMind.WebApi` 构建复制到输出目录。发布包如果直接运行，也需要保留 `Config/AiCleanPrompts/` 目录。
+
 ## 提示词占位符规范
 
 当前后端支持以下占位符：
 
-- `{{schemaVersion}}`
-  用于输出结构版本，当前固定替换为 `netmind.mindmap.v1`。
-- `{{naturalLanguage}}`
-  用于插入用户原始输入文本。
-- `{{requirement}}`
-  用于插入用户不成熟、待拆解的需求文本。
-- `{{context}}`
-  用于插入程序从本次对话记录中自动组装的上下文；当上下文过长时，该占位符会接收压缩后的上下文摘要。
-- `{{message}}`
-  用于插入对话弹窗中的最新一条用户消息。
+- `{{schemaVersion}}`：输出结构版本，当前固定替换为 `netmind.mindmap.v1`。
+- `{{naturalLanguage}}`：用户原始输入文本。
+- `{{requirement}}`：用户不成熟、待拆解的需求文本。
+- `{{context}}`：程序从本次对话记录中组装的上下文；当上下文过长时会替换为压缩摘要。
+- `{{message}}`：对话弹窗中的最新一条用户消息。
 
 约束：
 
 - 未在服务端支持的占位符不会被替换。
 - 模板中必须保留输出结构要求，否则模型可能返回不可导入的数据。
-- `SystemPromptLines`、`UserPromptTemplateLines`、`RequirementPromptTemplateLines`、`ContextChatPromptTemplateLines`、`ContextCompressionPromptTemplateLines` 至少各配置一行，否则服务启动后调用会报配置错误。
+- 每个 Prompt 文件至少需要包含一行有效内容，否则服务调用会报配置错误。
+
+## 密钥管理
+
+真实 API Key 不允许写入仓库内任何 `appsettings*.json` 或发布配置文件。当前推荐做法：
+
+```powershell
+$env:DEEPSEEK_API_KEY="你的真实密钥"
+```
+
+生产环境应使用服务器环境变量、容器 Secret、CI/CD Secret 或部署平台密钥管理。由于此前仓库配置中出现过明文 Key，合并前建议在 GitHub / DeepSeek 控制台轮换该 Key，并检查远端历史记录是否需要清理。
 
 ## 提示词编写规范
 
-### 1. 结构要求必须明确
-
-- 必须明确返回 JSON，不允许 Markdown、解释性文本或前后缀。
-- 必须明确输出 schema，至少包含 `schemaVersion`、`title`、`nodes`、`relations`。
-- 必须明确 `clientId`、`parentClientId`、`sourceClientId`、`targetClientId` 的引用一致性要求。
-
-### 2. 业务规则写在用户模板中
-
-- 层级深度限制、节点数量范围、标题长度、内容粒度、关系类型建议，都应写在 `UserPromptTemplateLines`。
-- 不要把这些业务规则散落到服务代码里。
-
-### 3. System Prompt 只放稳定约束
-
-- 适合放模型角色、响应格式、禁止 Markdown 这类稳定要求。
-- 不要把频繁调整的业务拆解规则写到 `SystemPromptLines`。
-
-### 4. 模板按“指令块”分段
-
-建议顺序：
-
-- 角色定义
-- 输出格式
-- 结构化规则
-- 质量规则
-- 约束和禁止项
-- 用户输入区
-
-这样便于后续人工审核和按段调整。
-
-### 5. 一行只表达一个要求
-
-- 配置采用 `...Lines` 数组，每一行应尽量保持单一语义。
-- 这样更利于 diff 审查、阶段调优和问题回溯。
-
-### 6. 不把密钥和提示词混写
-
-- API Key 只放模型配置。
-- 提示词只放 `Prompt` 配置。
-- 不要把密钥、endpoint、模型名称写进提示词文本。
-
-### 7. 变更要求同步记录
-
-每次修改 AI 提示词时，至少同步更新：
-
-- `src/NetMind.WebApi/appsettings.json`
-- `src/NetMind.WebApi/appsettings.Development.json`
-- `/AI文档/AI大模型配置说明.md`
-- `/AI文档/开发日志.md`
+1. 结构要求必须明确：必须要求返回 JSON，不允许 Markdown、解释性文本或前后缀。
+2. 业务规则写在 Prompt 文件中：层级深度、节点数量、标题长度、内容粒度、关系类型建议都应在文本配置里维护。
+3. System Prompt 只放稳定约束：不要把频繁调整的业务拆解规则写到系统约束里。
+4. 模板按指令块分段：角色定义、输出格式、结构规则、质量规则、约束和用户输入区。
+5. 不把密钥和提示词混写：API Key 只通过模型配置的环境变量名引用，Prompt 不写密钥、endpoint 或真实模型凭证。
+6. 变更要求同步记录：修改 AI 配置或 Prompt 后，同步更新本文档和对应开发日志。
 
 ## 运行要求
 
-- DeepSeek：运行服务前设置环境变量 `DEEPSEEK_API_KEY`，或在本地开发时按需配置 `ApiKey`。
+- DeepSeek：运行服务前设置环境变量 `DEEPSEEK_API_KEY`。
 - Ollama：本地启动 Ollama，并确认模型名与配置中的 `Model` 一致。
 - AI 返回必须是 `netmind.mindmap.v1` JSON；后端会继续校验结构版本、节点、父子关系和关联端点。
 
-## P1.3 接口
-
-- `POST /api/ai/clean`：清洗自然语言，返回标准导图结构。
-- `POST /api/ai/context-chat`：接收最新消息和程序自动组装的本次对话上下文，返回本轮 AI 回复。该接口用于需求澄清，不使用固定维度模板，而是按需求类型动态选择追问方向。
-- `POST /api/ai/requirements/structure`：接收 `requirement`、程序自动组装的 `context`、`modelId`，先按阈值压缩长上下文，再让 AI 将不成熟需求拆解为标准导图结构。
-- 前端“生成结构体”复用 `POST /api/ai/clean`，把本次对话上下文作为 `naturalLanguage` 输入生成标准结构体，与原 AI 清洗逻辑保持一致。
-
 ## 数据库配置
 
-数据库连接字符串同样位于配置文件：
+数据库连接字符串位于配置文件，生产环境建议同样使用环境变量覆盖：
 
-```json
-{
-  "ConnectionStrings": {
-    "Postgres": "Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=xxx;"
-  }
-}
+```powershell
+$env:ConnectionStrings__Postgres="Host=127.0.0.1;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
 ```
 
 运行接口前需要先创建 PostgreSQL 数据库并执行：
@@ -192,5 +125,3 @@ P1.3 在真实模型清洗基础上，新增带用户上下文的需求结构化
 ```powershell
 psql -d netmind -U postgres -f AI文档/SQL/Init.sql
 ```
-
-P1.2 后端接口只连接 PostgreSQL，不再使用本地内存种子数据。

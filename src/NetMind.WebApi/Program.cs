@@ -34,7 +34,7 @@ builder.Services.AddScoped<INodeRelationService, NodeRelationService>();
 builder.Services.AddScoped<IMindMapTransferService, MindMapTransferService>();
 builder.Services.AddScoped<IAiConversationRecordService, AiConversationRecordService>();
 builder.Services.AddHttpClient<IAiCleanService, AiCleanService>();
-builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration));
+builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration, builder.Environment.ContentRootPath));
 
 var app = builder.Build();
 
@@ -185,7 +185,7 @@ static bool IsTcpPortOpen(string host, int port)
     }
 }
 
-static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration)
+static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string contentRootPath)
 {
     var promptSection = configuration.GetSection("AiClean:Prompt");
     var models = configuration.GetSection("AiClean:Models")
@@ -212,23 +212,52 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration)
         Prompt = new AiPromptOptions
         {
             ContextCompressionThreshold = ReadInt(promptSection["ContextCompressionThreshold"], 4000),
-            SystemPromptLines = promptSection.GetSection("SystemPromptLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            UserPromptTemplateLines = promptSection.GetSection("UserPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            RequirementPromptTemplateLines = promptSection.GetSection("RequirementPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            ContextChatPromptTemplateLines = promptSection.GetSection("ContextChatPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            ContextCompressionPromptTemplateLines = promptSection.GetSection("ContextCompressionPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList()
+            SystemPromptLines = ReadPromptLines(promptSection, "System", "SystemPromptLines", contentRootPath),
+            UserPromptTemplateLines = ReadPromptLines(promptSection, "User", "UserPromptTemplateLines", contentRootPath),
+            RequirementPromptTemplateLines = ReadPromptLines(promptSection, "Requirement", "RequirementPromptTemplateLines", contentRootPath),
+            ContextChatPromptTemplateLines = ReadPromptLines(promptSection, "ContextChat", "ContextChatPromptTemplateLines", contentRootPath),
+            ContextCompressionPromptTemplateLines = ReadPromptLines(promptSection, "ContextCompression", "ContextCompressionPromptTemplateLines", contentRootPath)
         }
     };
+}
+
+static IReadOnlyList<string> ReadPromptLines(
+    IConfigurationSection promptSection,
+    string fileKey,
+    string legacyLinesKey,
+    string contentRootPath)
+{
+    var promptFile = promptSection.GetSection("PromptFiles")[fileKey];
+    if (!string.IsNullOrWhiteSpace(promptFile))
+    {
+        var filePath = ResolvePromptFilePath(contentRootPath, promptFile);
+        if (!File.Exists(filePath))
+        {
+            throw new InvalidOperationException($"AI Prompt 文件不存在：{filePath}");
+        }
+
+        return File.ReadAllLines(filePath);
+    }
+
+    return promptSection.GetSection(legacyLinesKey).GetChildren()
+        .Select(section => section.Value ?? string.Empty)
+        .ToList();
+}
+
+static string ResolvePromptFilePath(string contentRootPath, string promptFile)
+{
+    if (Path.IsPathRooted(promptFile))
+    {
+        return promptFile;
+    }
+
+    var contentRootCandidate = Path.GetFullPath(Path.Combine(contentRootPath, promptFile));
+    if (File.Exists(contentRootCandidate))
+    {
+        return contentRootCandidate;
+    }
+
+    return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, promptFile));
 }
 
 static bool ReadBool(string? value)

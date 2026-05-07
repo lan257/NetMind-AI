@@ -11,3 +11,4 @@
 npm-debug.log*
 src/NetMind.WebApi/Logs/
 *.log
+src/NetMind.WebApi/Properties/launchSettings.json
