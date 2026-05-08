@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Delete, EditPen, Plus, Refresh, ZoomIn, ZoomOut, Link } from '@element-plus/icons-vue';
+import { Check, Delete, EditPen, Plus, Refresh, ZoomIn, ZoomOut, Link } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 
 const props = defineProps({
@@ -14,7 +14,7 @@ const props = defineProps({
   searchNodes: { type: Function, default: null }
 });
 
-const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node']);
+const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node', 'save-node-positions']);
 
 const canvasRef = ref(null);
 const wrapRef = ref(null);
@@ -22,6 +22,7 @@ const hoverNodeId = ref(null);
 const hitRegions = ref([]);
 const actionRegions = ref([]);
 const manualPositions = ref(new Map());
+const unsavedPositionIds = ref(new Set());
 const viewport = ref({ x: 0, y: 0, scale: 1 });
 const editorForm = ref({ title: '', content: '', orderNo: 1 });
 let resizeObserver = null;
@@ -64,6 +65,14 @@ function insertReference(node) {
   searchResults.value = [];
 }
 
+function getSavedPosition(node) {
+  if (Number.isFinite(node.positionX) && Number.isFinite(node.positionY)) {
+    return { x: node.positionX, y: node.positionY };
+  }
+
+  return null;
+}
+
 // 自动触发 [[
 watch(() => editorForm.value.content, (newVal, oldVal) => {
   if (newVal && newVal.endsWith('[[') && (newVal.length > (oldVal?.length ?? 0))) {
@@ -72,6 +81,7 @@ watch(() => editorForm.value.content, (newVal, oldVal) => {
 });
 
 const selectedNode = computed(() => props.nodes.find((node) => node.id === props.selectedNodeId) ?? null);
+const unsavedPositionCount = computed(() => unsavedPositionIds.value.size);
 const orderedNodes = computed(() => [...props.nodes].sort((left, right) => {
   return (left.orderNo ?? 0) - (right.orderNo ?? 0) || left.id - right.id;
 }));
@@ -153,10 +163,11 @@ function createLayout(ctx) {
     const widthValue = Math.max(132, Math.min(196, Math.max(...lines.map((line) => ctx.measureText(line).width)) + 34));
     const heightValue = Math.max(48, lines.length * 18 + 24);
     const manual = manualPositions.value.get(node.id);
+    const saved = getSavedPosition(node);
     const graphNode = {
       ...node,
-      x: manual?.x ?? direction * (rootGap + (depth - 1) * levelGap),
-      y: manual?.y ?? y,
+      x: manual?.x ?? saved?.x ?? direction * (rootGap + (depth - 1) * levelGap),
+      y: manual?.y ?? saved?.y ?? y,
       width: widthValue,
       height: heightValue,
       lines,
@@ -469,6 +480,9 @@ function handlePointerMove(event) {
       const next = new Map(manualPositions.value);
       next.set(interaction.node.id, world);
       manualPositions.value = next;
+      const nextUnsavedIds = new Set(unsavedPositionIds.value);
+      nextUnsavedIds.add(interaction.node.id);
+      unsavedPositionIds.value = nextUnsavedIds;
       scheduleDraw();
       return;
     }
@@ -495,7 +509,11 @@ function handlePointerUp(event) {
   canvasRef.value?.releasePointerCapture(event.pointerId);
   const current = interaction;
   interaction = null;
-  if (!current || current.moved || !current.node) {
+  if (!current || !current.node) {
+    return;
+  }
+
+  if (current.moved) {
     return;
   }
 
@@ -536,6 +554,7 @@ function handleWheel(event) {
 
 function resetView() {
   manualPositions.value = new Map();
+  unsavedPositionIds.value = new Set();
   fitView();
 }
 
@@ -553,20 +572,64 @@ function createChildNode() {
 }
 
 function saveSelectedNode() {
+  const saved = selectedNode.value ? getSavedPosition(selectedNode.value) : null;
   emit('update-node', {
     title: editorForm.value.title,
     content: editorForm.value.content,
-    orderNo: Number(editorForm.value.orderNo) || 0
+    orderNo: Number(editorForm.value.orderNo) || 0,
+    positionX: saved?.x ?? null,
+    positionY: saved?.y ?? null
   });
+}
+
+function saveNodePositions() {
+  const changed = [...unsavedPositionIds.value]
+    .map((id) => {
+      const node = props.nodes.find((item) => item.id === id);
+      const position = manualPositions.value.get(id);
+      return node && position ? { nodeId: id, positionX: position.x, positionY: position.y } : null;
+    })
+    .filter(Boolean);
+
+  if (changed.length === 0) {
+    return;
+  }
+
+  emit('save-node-positions', changed);
+}
+
+function clearSavedPositionFlags() {
+  if (unsavedPositionIds.value.size === 0) {
+    return;
+  }
+
+  const remaining = new Set(unsavedPositionIds.value);
+  props.nodes.forEach((node) => {
+    const manual = manualPositions.value.get(node.id);
+    if (
+      manual &&
+      Number.isFinite(node.positionX) &&
+      Number.isFinite(node.positionY) &&
+      Math.abs(node.positionX - manual.x) < 0.01 &&
+      Math.abs(node.positionY - manual.y) < 0.01
+    ) {
+      remaining.delete(node.id);
+    }
+  });
+  unsavedPositionIds.value = remaining;
 }
 
 watch(() => [props.map?.id, props.nodes.length], async () => {
   manualPositions.value = new Map();
+  unsavedPositionIds.value = new Set();
   await nextTick();
   fitView();
 });
 
-watch(() => [props.nodes, props.relations, props.selectedNodeId], () => scheduleDraw(), { deep: true });
+watch(() => [props.nodes, props.relations, props.selectedNodeId], () => {
+  clearSavedPositionFlags();
+  scheduleDraw();
+}, { deep: true });
 
 watch(selectedNode, (node) => {
   editorForm.value = node
@@ -604,6 +667,9 @@ onBeforeUnmount(() => {
       <div v-if="editable" class="canvas-tool-group canvas-primary-tools">
         <el-button type="primary" :icon="Plus" :disabled="loading || !map" @click="createRootNode">根节点</el-button>
         <el-button :icon="Plus" :disabled="loading || !map" @click="createChildNode">子节点</el-button>
+        <el-button :icon="Check" :disabled="loading || unsavedPositionCount === 0" data-testid="save-node-positions" @click="saveNodePositions">
+          保存位置 {{ unsavedPositionCount > 0 ? `(${unsavedPositionCount})` : '' }}
+        </el-button>
         <el-button type="danger" :icon="Delete" :disabled="loading || !selectedNode" @click="$emit('delete-node')">删除</el-button>
       </div>
     </div>

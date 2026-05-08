@@ -139,20 +139,45 @@ public sealed class MindMapRepository : IMindMapRepository
             return 0;
         }
 
+        // Always delete nodes and relations belonging to this map
+        affected += await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE map_id = @id AND is_deleted = FALSE;
+            """,
+            ("id", id));
+
+        affected += await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node_relation
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP
+            WHERE map_id = @id AND is_deleted = FALSE;
+            """,
+            ("id", id));
+
+        affected += await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            UPDATE node_meta
+            SET is_deleted = TRUE,
+                deleted_at = CURRENT_TIMESTAMP
+            WHERE is_deleted = FALSE 
+              AND node_id IN (SELECT id FROM node WHERE map_id = @id);
+            """,
+            ("id", id));
+
         if (cascade)
         {
-            affected += await ExecuteAsync(
-                connection,
-                transaction,
-                """
-                UPDATE node
-                SET is_deleted = TRUE,
-                    deleted_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE map_id = @id AND is_deleted = FALSE;
-                """,
-                ("id", id));
-
+            // Cascade delete: handle relations in OTHER maps that point to nodes in THIS map
             affected += await ExecuteAsync(
                 connection,
                 transaction,
@@ -160,7 +185,12 @@ public sealed class MindMapRepository : IMindMapRepository
                 UPDATE node_relation
                 SET is_deleted = TRUE,
                     deleted_at = CURRENT_TIMESTAMP
-                WHERE map_id = @id AND is_deleted = FALSE;
+                WHERE is_deleted = FALSE
+                  AND map_id <> @id
+                  AND (
+                      source_id IN (SELECT id FROM node WHERE map_id = @id)
+                      OR target_id IN (SELECT id FROM node WHERE map_id = @id)
+                  );
                 """,
                 ("id", id));
         }

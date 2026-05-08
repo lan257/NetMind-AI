@@ -12,9 +12,9 @@ public interface INodeRepository
 
     Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId);
 
-    Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo);
+    Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY);
 
-    Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo);
+    Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY);
 
     Task<int> DeleteSelfAsync(long id);
 

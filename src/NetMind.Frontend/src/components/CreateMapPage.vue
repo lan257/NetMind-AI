@@ -1,5 +1,5 @@
 <script setup>
-import { ChatDotRound, Download, MagicStick, Upload } from '@element-plus/icons-vue';
+import { ChatDotRound, Clock, Download, MagicStick, Upload } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 import MindMapCanvas from './MindMapCanvas.vue';
 import NodeTreeView from './NodeTreeView.vue';
@@ -139,6 +139,9 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
       />
       <template #footer>
         <div class="chat-dialog-footer">
+          <el-button :icon="Clock" data-testid="ai-chat-history-footer" @click="workspace.loadConversationHistory">
+            历史对话
+          </el-button>
           <el-button data-testid="ai-new-chat" @click="workspace.startNewConversation">新对话</el-button>
           <el-button data-testid="ai-chat-clean" :disabled="workspace.chatMessages.value.length === 0" @click="workspace.cleanConversationContext">
             生成结构体
@@ -148,6 +151,28 @@ defineEmits(['created', 'update:viewMode', 'preview-node']);
           </el-button>
         </div>
       </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="workspace.chatHistoryOpen.value"
+      title="历史对话"
+      width="min(640px, calc(100vw - 32px))"
+      class="chat-history-dialog"
+    >
+      <div v-loading="workspace.chatHistoryLoading.value" class="chat-history-list">
+        <div v-if="workspace.chatHistoryGroups.value.length === 0" class="empty small">暂无历史对话。</div>
+        <button
+          v-for="group in workspace.chatHistoryGroups.value"
+          :key="group.conversationId"
+          type="button"
+          class="chat-history-item"
+          data-testid="ai-chat-history-item"
+          @click="workspace.restoreConversation(group)"
+        >
+          <span>{{ group.title }}</span>
+          <small>{{ group.count }} 条消息 · {{ group.updatedAt ? new Date(group.updatedAt).toLocaleString() : '' }}</small>
+        </button>
+      </div>
     </el-dialog>
   </section>
 </template>

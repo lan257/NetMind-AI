@@ -1,13 +1,14 @@
 <script setup>
-import { Plus } from '@element-plus/icons-vue';
+import { Delete, Plus } from '@element-plus/icons-vue';
 
 defineProps({
   maps: { type: Array, default: () => [] },
   selectedMapId: { type: [Number, String, null], default: null },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  deletable: { type: Boolean, default: false }
 });
 
-defineEmits(['select-map', 'create-map']);
+defineEmits(['select-map', 'create-map', 'delete-map']);
 </script>
 
 <template>
@@ -16,9 +17,31 @@ defineEmits(['select-map', 'create-map']);
       <h2>思维导图</h2>
       <span>{{ maps.length }} 个</span>
     </div>
-    <el-button class="wide-action" type="primary" :icon="Plus" data-testid="open-create-map" @click="$emit('create-map')">
-      新增思维导图
-    </el-button>
+    <div class="sidebar-actions" v-if="deletable">
+      <el-button class="wide-action" type="primary" :icon="Plus" data-testid="open-create-map" @click="$emit('create-map')">
+        新增
+      </el-button>
+      <el-popconfirm
+        title="确认删除当前思维导图及其节点？"
+        confirm-button-text="删除"
+        cancel-button-text="取消"
+        confirm-button-type="danger"
+        @confirm="$emit('delete-map')"
+      >
+        <template #reference>
+          <el-button
+            class="wide-action"
+            type="danger"
+            plain
+            :icon="Delete"
+            data-testid="delete-selected-map"
+            :disabled="loading || !selectedMapId"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-popconfirm>
+    </div>
     <div class="map-list">
       <button
         v-for="map in maps"

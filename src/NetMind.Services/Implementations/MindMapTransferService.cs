@@ -45,7 +45,9 @@ public sealed class MindMapTransferService : IMindMapTransferService
                     ParentClientId = node.ParentId.HasValue ? ToClientNodeId(node.ParentId.Value) : null,
                     Title = node.Title,
                     Content = node.Content,
-                    OrderNo = node.OrderNo
+                    OrderNo = node.OrderNo,
+                    PositionX = node.PositionX,
+                    PositionY = node.PositionY
                 })
                 .ToList(),
             Relations = relations
@@ -134,7 +136,9 @@ public sealed class MindMapTransferService : IMindMapTransferService
                 ParentId = parentId,
                 Title = sourceNode.Title.Trim(),
                 Content = sourceNode.Content,
-                OrderNo = sourceNode.OrderNo
+                OrderNo = sourceNode.OrderNo,
+                PositionX = sourceNode.PositionX,
+                PositionY = sourceNode.PositionY
             });
 
             visiting.Remove(clientId);

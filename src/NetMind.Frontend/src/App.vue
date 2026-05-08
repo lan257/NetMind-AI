@@ -61,8 +61,10 @@ onMounted(async () => {
           :maps="workspace.maps.value"
           :selected-map-id="workspace.selectedMapId.value"
           :loading="workspace.loading.value"
+          :deletable="workMode === 'workbench'"
           @select-map="workspace.selectMap"
           @create-map="openCreatePage"
+          @delete-map="workspace.deleteSelectedMap"
         />
         <MindMapCanvas
           v-if="viewMode === 'graph'"
@@ -78,6 +80,7 @@ onMounted(async () => {
           @preview-node="preview"
           @create-node="workspace.createCanvasNode"
           @update-node="workspace.updateCanvasNode"
+          @save-node-positions="workspace.saveCanvasNodePositions"
           @delete-node="workspace.deleteNode(false)"
         />
         <NodeTreeView

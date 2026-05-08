@@ -22,6 +22,10 @@ public sealed class MindMapTransferNodeDto
     public string? Content { get; init; }
 
     public int OrderNo { get; init; }
+
+    public double? PositionX { get; init; }
+
+    public double? PositionY { get; init; }
 }
 
 public sealed class MindMapTransferRelationDto

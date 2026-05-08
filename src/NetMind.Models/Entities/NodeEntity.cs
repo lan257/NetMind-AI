@@ -19,6 +19,10 @@ public sealed class NodeEntity
 
     public int OrderNo { get; set; }
 
+    public double? PositionX { get; set; }
+
+    public double? PositionY { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

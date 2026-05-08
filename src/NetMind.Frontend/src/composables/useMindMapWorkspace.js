@@ -29,6 +29,9 @@ export function useMindMapWorkspace() {
   const chatInput = ref('');
   const chatMessages = ref([]);
   const chatConversationId = ref(createConversationId());
+  const chatHistoryOpen = ref(false);
+  const chatHistoryLoading = ref(false);
+  const chatHistoryGroups = ref([]);
   const loading = ref(false);
   const toast = ref({ type: '', text: '' });
 
@@ -232,7 +235,9 @@ export function useMindMapWorkspace() {
           parentId,
           title,
           content: nodeForm.value.content,
-          orderNo: Number(nodeForm.value.orderNo) || 0
+          orderNo: Number(nodeForm.value.orderNo) || 0,
+          positionX: null,
+          positionY: null
         })
       }),
       '节点已创建'
@@ -275,7 +280,9 @@ export function useMindMapWorkspace() {
           parentId: selectedNode.value.parentId,
           title,
           content: nodeForm.value.content,
-          orderNo: Number(nodeForm.value.orderNo) || 0
+          orderNo: Number(nodeForm.value.orderNo) || 0,
+          positionX: selectedNode.value.positionX ?? null,
+          positionY: selectedNode.value.positionY ?? null
         })
       }),
       '节点已保存'
@@ -297,7 +304,68 @@ export function useMindMapWorkspace() {
       content: payload.content ?? selectedNode.value.content ?? '',
       orderNo: payload.orderNo ?? selectedNode.value.orderNo
     };
+    if (Object.prototype.hasOwnProperty.call(payload, 'positionX')) {
+      selectedNode.value.positionX = payload.positionX;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'positionY')) {
+      selectedNode.value.positionY = payload.positionY;
+    }
     await updateNode();
+  }
+
+  async function saveCanvasNodePositions(positionUpdates = []) {
+    if (!selectedMap.value || positionUpdates.length === 0) {
+      return;
+    }
+
+    const updatesById = new Map(positionUpdates.map((item) => [item.nodeId, item]));
+    const targets = nodes.value.filter((node) => updatesById.has(node.id));
+    if (targets.length === 0) {
+      showToast('error', '没有可保存的位置变更');
+      return;
+    }
+
+    const saved = await run(
+      () => Promise.all(targets.map((node) => {
+        const position = updatesById.get(node.id);
+        return api(`/api/nodes/${node.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            parentId: node.parentId,
+            title: node.title,
+            content: node.content,
+            orderNo: Number(node.orderNo) || 0,
+            positionX: position.positionX,
+            positionY: position.positionY
+          })
+        });
+      })),
+      `已保存 ${targets.length} 个节点位置`
+    );
+
+    if (saved) {
+      await refreshMapData(selectedMap.value.id, { keepNodeId: selectedNodeId.value });
+    }
+  }
+
+  async function deleteSelectedMap() {
+    if (!selectedMap.value) {
+      showToast('error', '请先选择思维导图');
+      return;
+    }
+
+    const deletedMapId = selectedMap.value.id;
+    const deleted = await run(
+      () => api(`/api/mind-maps/${deletedMapId}/cascade`, { method: 'DELETE' }),
+      '思维导图已删除'
+    );
+
+    if (deleted) {
+      if (selectedMapId.value === deletedMapId) {
+        selectedMapId.value = null;
+      }
+      await loadMaps();
+    }
   }
 
   async function deleteNode(subtree) {
@@ -553,6 +621,51 @@ export function useMindMapWorkspace() {
     aiStatus.value = '已开始新对话';
   }
 
+  async function loadConversationHistory() {
+    chatHistoryOpen.value = true;
+    chatHistoryLoading.value = true;
+    try {
+      const records = await api('/api/ai-conversation-records');
+      const groups = new Map();
+      records.forEach((record) => {
+        if (!groups.has(record.conversationId)) {
+          groups.set(record.conversationId, []);
+        }
+        groups.get(record.conversationId).push(record);
+      });
+
+      chatHistoryGroups.value = [...groups.entries()]
+        .map(([conversationId, items]) => {
+          const ordered = [...items].sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt));
+          const firstUser = ordered.find((item) => item.role === 'user');
+          const last = ordered[ordered.length - 1];
+          return {
+            conversationId,
+            records: ordered,
+            title: firstUser?.content?.slice(0, 36) || '未命名对话',
+            updatedAt: last?.updatedAt ?? last?.createdAt ?? '',
+            count: ordered.length
+          };
+        })
+        .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt));
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : '历史对话加载失败');
+    } finally {
+      chatHistoryLoading.value = false;
+    }
+  }
+
+  function restoreConversation(group) {
+    chatConversationId.value = group.conversationId;
+    chatMessages.value = group.records.map((record) => ({
+      role: record.role,
+      content: record.content
+    }));
+    chatHistoryOpen.value = false;
+    chatOpen.value = true;
+    aiStatus.value = '已载入历史对话';
+  }
+
   async function cleanConversationContext() {
     const context = chatContextText.value.trim();
     if (!context) {
@@ -605,6 +718,10 @@ export function useMindMapWorkspace() {
     chatOpen,
     chatInput,
     chatMessages,
+    chatConversationId,
+    chatHistoryOpen,
+    chatHistoryLoading,
+    chatHistoryGroups,
     loading,
     toast,
     visualNodes,
@@ -617,6 +734,8 @@ export function useMindMapWorkspace() {
     createCanvasNode,
     updateNode,
     updateCanvasNode,
+    saveCanvasNodePositions,
+    deleteSelectedMap,
     deleteNode,
     createRelation,
     deleteRelation,
@@ -630,6 +749,8 @@ export function useMindMapWorkspace() {
     cleanNaturalLanguage,
     sendChatMessage,
     startNewConversation,
+    loadConversationHistory,
+    restoreConversation,
     cleanConversationContext
   };
 }

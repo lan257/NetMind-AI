@@ -44,7 +44,14 @@ public sealed partial class NodeService : INodeService
     public async Task<NodeDto> CreateAsync(CreateNodeRequest request)
     {
         var title = RequireText(request.Title, nameof(request.Title));
-        return ToDto(await _repository.CreateAsync(request.MapId, request.ParentId, title, request.Content, request.OrderNo));
+        return ToDto(await _repository.CreateAsync(
+            request.MapId,
+            request.ParentId,
+            title,
+            request.Content,
+            request.OrderNo,
+            request.PositionX,
+            request.PositionY));
     }
 
     public async Task<NodeDto?> UpdateAsync(long id, UpdateNodeRequest request)
@@ -61,7 +68,14 @@ public sealed partial class NodeService : INodeService
             throw new InvalidOperationException("同级节点排序不能重复。");
         }
 
-        var entity = await _repository.UpdateAsync(id, request.ParentId, title, request.Content, request.OrderNo);
+        var entity = await _repository.UpdateAsync(
+            id,
+            request.ParentId,
+            title,
+            request.Content,
+            request.OrderNo,
+            request.PositionX,
+            request.PositionY);
         if (entity != null)
         {
             await SyncRelationsAsync(entity);
@@ -151,6 +165,8 @@ public sealed partial class NodeService : INodeService
             Title = entity.Title,
             Content = entity.Content,
             OrderNo = entity.OrderNo,
+            PositionX = entity.PositionX,
+            PositionY = entity.PositionY,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
