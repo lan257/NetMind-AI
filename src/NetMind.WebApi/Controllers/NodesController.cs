@@ -22,6 +22,12 @@ public sealed class NodesController : ControllerBase
         return ApiResult<IReadOnlyList<NodeDto>>.Ok(await _nodeService.ListByMapAsync(mapId));
     }
 
+    [HttpGet("search")]
+    public async Task<ApiResult<IReadOnlyList<NodeDto>>> SearchAsync([FromQuery] long? mapId, [FromQuery] string keyword, [FromQuery] int limit = 10)
+    {
+        return ApiResult<IReadOnlyList<NodeDto>>.Ok(await _nodeService.SearchAsync(mapId, keyword, limit));
+    }
+
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ApiResult<NodeDto>>> GetAsync(long id)
     {

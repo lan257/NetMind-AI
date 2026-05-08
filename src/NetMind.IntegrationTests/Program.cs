@@ -85,8 +85,9 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 var connectionFactory = new PostgresConnectionFactory(connectionString);
 var mindMapService = new MindMapService(new MindMapRepository(connectionFactory, NullAppLogger.Instance));
-var nodeService = new NodeService(new NodeRepository(connectionFactory, NullAppLogger.Instance));
-var relationService = new NodeRelationService(new NodeRelationRepository(connectionFactory, NullAppLogger.Instance));
+var nodeRelationRepository = new NodeRelationRepository(connectionFactory, NullAppLogger.Instance);
+var nodeService = new NodeService(new NodeRepository(connectionFactory, NullAppLogger.Instance), nodeRelationRepository);
+var relationService = new NodeRelationService(nodeRelationRepository);
 var transferService = new MindMapTransferService(mindMapService, nodeService, relationService);
 
 var createdMap = await mindMapService.CreateAsync(new CreateMindMapRequest { Title = "P1.2 集成测试导图" });

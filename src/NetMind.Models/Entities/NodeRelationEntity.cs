@@ -9,7 +9,15 @@ public sealed class NodeRelationEntity
 
     public long SourceId { get; set; }
 
+    public string? SourceTitle { get; set; }
+
+    public long? SourceMapId { get; set; }
+
     public long TargetId { get; set; }
+
+    public string? TargetTitle { get; set; }
+
+    public long? TargetMapId { get; set; }
 
     public string RelationType { get; set; } = string.Empty;
 

@@ -9,6 +9,8 @@ public sealed class NodeEntity
 
     public long MapId { get; set; }
 
+    public string? MapTitle { get; set; }
+
     public long? ParentId { get; set; }
 
     public string Title { get; set; } = string.Empty;

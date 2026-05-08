@@ -19,6 +19,11 @@ public sealed class NodeRelationService : INodeRelationService
         return (await _repository.ListByMapAsync(mapId)).Select(ToDto).ToList();
     }
 
+    public async Task<IReadOnlyList<NodeRelationDto>> ListByNodeAsync(long nodeId)
+    {
+        return (await _repository.ListByNodeAsync(nodeId)).Select(ToDto).ToList();
+    }
+
     public async Task<NodeRelationDto?> GetAsync(long id)
     {
         var entity = await _repository.GetAsync(id);
@@ -76,7 +81,11 @@ public sealed class NodeRelationService : INodeRelationService
         {
             Id = entity.Id,
             SourceId = entity.SourceId,
+            SourceTitle = entity.SourceTitle,
+            SourceMapId = entity.SourceMapId,
             TargetId = entity.TargetId,
+            TargetTitle = entity.TargetTitle,
+            TargetMapId = entity.TargetMapId,
             RelationType = entity.RelationType,
             Weight = entity.Weight,
             MapId = entity.MapId,

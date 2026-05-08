@@ -25,7 +25,28 @@ let suppressClick = false;
 
 const nodeById = computed(() => {
   const result = new Map();
+  // 先加入当前导图的所有节点
   props.nodes.forEach((node) => result.set(node.id, node));
+  
+  // 再加入关联中引用的跨图节点信息
+  props.relations.forEach((rel) => {
+    if (!result.has(rel.sourceId) && rel.sourceTitle) {
+      result.set(rel.sourceId, { 
+        id: rel.sourceId, 
+        title: rel.sourceTitle, 
+        mapId: rel.sourceMapId,
+        isExternal: true 
+      });
+    }
+    if (!result.has(rel.targetId) && rel.targetTitle) {
+      result.set(rel.targetId, { 
+        id: rel.targetId, 
+        title: rel.targetTitle, 
+        mapId: rel.targetMapId,
+        isExternal: true 
+      });
+    }
+  });
   return result;
 });
 
@@ -167,12 +188,36 @@ function drawCanvas() {
     }
     const start = toScreen(source, width, height);
     const end = toScreen(target, width, height);
+    
+    // 计算箭头位置
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const angle = Math.atan2(dy, dx);
+    const sourceRadius = (relation.sourceId === props.centerNode?.id ? 28 : (relationGraph.value.depthById.get(relation.sourceId) === 1 ? 22 : 18)) * viewport.value.scale;
+    const targetRadius = (relation.targetId === props.centerNode?.id ? 28 : (relationGraph.value.depthById.get(relation.targetId) === 1 ? 22 : 18)) * viewport.value.scale;
+    
+    // 缩短线条，使其始于并止于圆圈边缘
+    const lineStartX = start.x + Math.cos(angle) * sourceRadius;
+    const lineStartY = start.y + Math.sin(angle) * sourceRadius;
+    const lineEndX = end.x - Math.cos(angle) * targetRadius;
+    const lineEndY = end.y - Math.sin(angle) * targetRadius;
+
     ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
+    ctx.moveTo(lineStartX, lineStartY);
+    ctx.lineTo(lineEndX, lineEndY);
     ctx.strokeStyle = '#8ab7d8';
     ctx.lineWidth = Math.max(1, 2 * viewport.value.scale);
     ctx.stroke();
+
+    // 绘制箭头
+    const arrowSize = 8 * viewport.value.scale;
+    ctx.beginPath();
+    ctx.moveTo(lineEndX, lineEndY);
+    ctx.lineTo(lineEndX - arrowSize * Math.cos(angle - Math.PI / 6), lineEndY - arrowSize * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(lineEndX - arrowSize * Math.cos(angle + Math.PI / 6), lineEndY - arrowSize * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fillStyle = '#8ab7d8';
+    ctx.fill();
 
     const midX = (start.x + end.x) / 2;
     const midY = (start.y + end.y) / 2;
@@ -192,11 +237,13 @@ function drawCanvas() {
 
     ctx.beginPath();
     ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = isCenter ? '#ecf5ff' : '#ffffff';
+    ctx.fillStyle = isCenter ? '#ecf5ff' : node.isExternal ? '#f9f9f9' : '#ffffff';
     ctx.fill();
     ctx.lineWidth = hovering || isCenter ? 2.4 : 1.4;
+    ctx.setLineDash(node.isExternal ? [4, 4] : []);
     ctx.strokeStyle = isCenter ? '#409eff' : hovering ? '#409eff' : '#cbd7e2';
     ctx.stroke();
+    ctx.setLineDash([]);
 
     ctx.fillStyle = '#25384a';
     ctx.font = `${isCenter ? 700 : 600} ${Math.max(11, 13 * viewport.value.scale)}px "Microsoft YaHei", "Segoe UI", Arial`;

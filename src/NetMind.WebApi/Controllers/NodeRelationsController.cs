@@ -22,6 +22,12 @@ public sealed class NodeRelationsController : ControllerBase
         return ApiResult<IReadOnlyList<NodeRelationDto>>.Ok(await _nodeRelationService.ListByMapAsync(mapId));
     }
 
+    [HttpGet("by-node/{nodeId:long}")]
+    public async Task<ApiResult<IReadOnlyList<NodeRelationDto>>> ListByNodeAsync(long nodeId)
+    {
+        return ApiResult<IReadOnlyList<NodeRelationDto>>.Ok(await _nodeRelationService.ListByNodeAsync(nodeId));
+    }
+
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ApiResult<NodeRelationDto>>> GetAsync(long id)
     {

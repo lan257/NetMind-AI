@@ -46,7 +46,12 @@ onMounted(async () => {
 
 <template>
   <main class="workspace">
-    <AppHeader :page="page" @go-main="openMainPage" />
+    <AppHeader
+      :page="page"
+      :search-nodes="workspace.searchNodes"
+      @go-main="openMainPage"
+      @jump-to-node="workspace.jumpToNode"
+    />
     <FloatingMessage :toast="workspace.toast.value" />
 
     <template v-if="page === 'main'">
@@ -68,6 +73,7 @@ onMounted(async () => {
           :editable="workMode === 'workbench'"
           :loading="workspace.loading.value"
           :preview-on-click="workMode !== 'workbench'"
+          :search-nodes="workspace.searchNodes"
           @select-node="workspace.selectNode"
           @preview-node="preview"
           @create-node="workspace.createCanvasNode"
@@ -93,6 +99,7 @@ onMounted(async () => {
           :selected-node-relations="workspace.selectedNodeRelations.value"
           :node-title-by-id="workspace.nodeTitleById.value"
           :loading="workspace.loading.value"
+          :search-nodes="workspace.searchNodes"
           @create-root="workspace.createNode(null)"
           @create-child="workspace.createNode(workspace.selectedNode.value?.id ?? null)"
           @save-node="workspace.updateNode"
@@ -118,7 +125,9 @@ onMounted(async () => {
       :node="previewNode"
       :nodes="workspace.nodes.value"
       :relations="workspace.relations.value"
+      :current-map-id="workspace.selectedMap.value?.id"
       @preview-node="preview"
+      @jump-to-node="workspace.jumpToNode"
     />
   </main>
 </template>

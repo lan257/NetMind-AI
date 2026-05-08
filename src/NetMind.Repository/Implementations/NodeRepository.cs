@@ -21,13 +21,55 @@ public sealed class NodeRepository : INodeRepository
         await using var connection = await _connectionFactory.OpenAsync();
         await using var command = new NpgsqlCommand(
             """
-            SELECT id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at
-            FROM node
-            WHERE map_id = @map_id AND is_deleted = FALSE
-            ORDER BY parent_id NULLS FIRST, order_no, id;
+            SELECT n.id, n.map_id, n.parent_id, n.title, n.content, n.order_no, n.created_at, n.updated_at, n.is_deleted, n.deleted_at,
+                   m.title as map_title
+            FROM node n
+            LEFT JOIN mind_map m ON n.map_id = m.id
+            WHERE n.map_id = @map_id AND n.is_deleted = FALSE
+            ORDER BY n.parent_id NULLS FIRST, n.order_no, n.id;
             """,
             connection);
         command.Parameters.AddWithValue("map_id", mapId);
+
+        var result = new List<NodeEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(ReadNode(reader));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<NodeEntity>> SearchAsync(long? mapId, string keyword, int limit)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        var sql = """
+            SELECT n.id, n.map_id, n.parent_id, n.title, n.content, n.order_no, n.created_at, n.updated_at, n.is_deleted, n.deleted_at,
+                   m.title as map_title
+            FROM node n
+            LEFT JOIN mind_map m ON n.map_id = m.id
+            WHERE n.is_deleted = FALSE 
+              AND (n.title ILIKE @keyword OR n.content ILIKE @keyword)
+            """;
+
+        if (mapId.HasValue)
+        {
+            sql += " AND n.map_id = @map_id";
+        }
+
+        sql += """
+            ORDER BY n.updated_at DESC
+            LIMIT @limit;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        if (mapId.HasValue)
+        {
+            command.Parameters.AddWithValue("map_id", mapId.Value);
+        }
+        command.Parameters.AddWithValue("keyword", $"%{keyword}%");
+        command.Parameters.AddWithValue("limit", limit);
 
         var result = new List<NodeEntity>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -44,9 +86,11 @@ public sealed class NodeRepository : INodeRepository
         await using var connection = await _connectionFactory.OpenAsync();
         await using var command = new NpgsqlCommand(
             """
-            SELECT id, map_id, parent_id, title, content, order_no, created_at, updated_at, is_deleted, deleted_at
-            FROM node
-            WHERE id = @id AND is_deleted = FALSE;
+            SELECT n.id, n.map_id, n.parent_id, n.title, n.content, n.order_no, n.created_at, n.updated_at, n.is_deleted, n.deleted_at,
+                   m.title as map_title
+            FROM node n
+            LEFT JOIN mind_map m ON n.map_id = m.id
+            WHERE n.id = @id AND n.is_deleted = FALSE;
             """,
             connection);
         command.Parameters.AddWithValue("id", id);
@@ -421,7 +465,7 @@ public sealed class NodeRepository : INodeRepository
 
     private static NodeEntity ReadNode(NpgsqlDataReader reader)
     {
-        return new NodeEntity
+        var entity = new NodeEntity
         {
             Id = reader.GetInt64(0),
             MapId = reader.GetInt64(1),
@@ -434,5 +478,12 @@ public sealed class NodeRepository : INodeRepository
             IsDeleted = reader.GetBoolean(8),
             DeletedAt = reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9)
         };
+
+        if (reader.FieldCount > 10 && !reader.IsDBNull(10))
+        {
+            entity.MapTitle = reader.GetString(10);
+        }
+
+        return entity;
     }
 }

@@ -739,3 +739,54 @@ input[type="file"] {
     min-height: 420px;
   }
 }
+
+.node-ref {
+  color: var(--el-color-primary);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--el-color-primary);
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.node-ref:hover {
+  background-color: var(--el-color-primary-light-9);
+  border-bottom-style: solid;
+}
+
+.search-preview-tooltip {
+  max-width: 320px;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 4px;
+}
+
+.tooltip-map-tag {
+  font-size: 11px;
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  display: inline-block;
+  font-weight: bold;
+}
+
+.markdown-body.mini {
+  font-size: 12px;
+  color: #e8f0f7; /* 浅色文字，适配深色 Tooltip 背景 */
+}
+
+.markdown-body.mini code {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.markdown-body.mini a {
+  color: #78b6e8;
+}
+
+.markdown-body.mini > * {
+  margin-bottom: 6px;
+}

@@ -1,5 +1,9 @@
 <script setup>
-defineProps({
+import { ref, watch } from 'vue';
+import { Link } from '@element-plus/icons-vue';
+import { renderMarkdown } from '../composables/useMarkdown';
+
+const props = defineProps({
   selectedMap: { type: Object, default: null },
   selectedNode: { type: Object, default: null },
   nodeForm: { type: Object, required: true },
@@ -7,7 +11,8 @@ defineProps({
   candidateTargets: { type: Array, default: () => [] },
   selectedNodeRelations: { type: Array, default: () => [] },
   nodeTitleById: { type: Object, required: true },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  searchNodes: { type: Function, default: null }
 });
 
 defineEmits([
@@ -19,6 +24,49 @@ defineEmits([
   'create-relation',
   'delete-relation'
 ]);
+
+const searchKeyword = ref('');
+const searchResults = ref([]);
+const searching = ref(false);
+const showRefDialog = ref(false);
+
+async function handleSearch(query) {
+  if (!query) {
+    searchResults.value = [];
+    return;
+  }
+  searching.value = true;
+  try {
+    const results = await props.searchNodes(query);
+    // 过滤掉当前正在编辑的节点
+    searchResults.value = results.filter(n => n.id !== props.selectedNode?.id);
+  } finally {
+    searching.value = false;
+  }
+}
+
+function insertReference(node) {
+  const refText = `[[${node.title}|${node.id}]]`;
+  const content = props.nodeForm.content || '';
+  
+  // 如果是因为输入 [[ 触发的，尝试替换最后的 [[
+  if (content.endsWith('[[')) {
+    props.nodeForm.content = content.slice(0, -2) + refText;
+  } else {
+    props.nodeForm.content = content + (content.length > 0 && !content.endsWith('\n') ? '\n' : '') + refText;
+  }
+  
+  showRefDialog.value = false;
+  searchKeyword.value = '';
+  searchResults.value = [];
+}
+
+// 自动触发 [[
+watch(() => props.nodeForm.content, (newVal, oldVal) => {
+  if (newVal && newVal.endsWith('[[') && (newVal.length > (oldVal?.length ?? 0))) {
+    showRefDialog.value = true;
+  }
+});
 </script>
 
 <template>
@@ -35,16 +83,75 @@ defineEmits([
       节点标题
       <el-input v-model="nodeForm.title" data-testid="node-title" placeholder="例如：用户注册流程" />
     </label>
-    <label>
-      节点内容
+    <label class="content-label">
+      <div class="label-header">
+        <span>节点内容</span>
+        <el-button
+          v-if="selectedNode"
+          link
+          type="primary"
+          :icon="Link"
+          @click="showRefDialog = true"
+        >
+          插入引用
+        </el-button>
+      </div>
       <el-input
         v-model="nodeForm.content"
         data-testid="node-content"
         type="textarea"
         :rows="5"
-        placeholder="记录这个节点的说明、结论或待办。"
+        placeholder="记录这个节点的说明、结论或待办。使用 [[标题|ID]] 引用其他节点。"
       />
     </label>
+
+    <el-dialog v-model="showRefDialog" title="插入节点引用 (全局)" width="400px" append-to-body>
+      <el-select
+        v-model="searchKeyword"
+        filterable
+        remote
+        reserve-keyword
+        placeholder="输入关键词搜索全库节点"
+        :remote-method="handleSearch"
+        :loading="searching"
+        style="width: 100%"
+        @change="(id) => {
+          const node = searchResults.find(n => n.id === id);
+          if (node) insertReference(node);
+        }"
+      >
+        <el-option
+          v-for="item in searchResults"
+          :key="item.id"
+          :label="item.title"
+          :value="item.id"
+        >
+          <el-tooltip
+            effect="dark"
+            placement="right"
+            :show-after="300"
+          >
+            <template #content>
+              <div class="search-preview-tooltip">
+                <div class="tooltip-map-tag" v-if="item.mapTitle">
+                  所属导图：{{ item.mapTitle }}
+                </div>
+                <div v-if="item.content" class="markdown-body mini" v-html="renderMarkdown(item.content)"></div>
+                <div v-else class="muted">暂无详细内容</div>
+              </div>
+            </template>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;">{{ item.title }}</span>
+              <span style="color: var(--el-text-color-secondary); font-size: 12px; margin-left: 8px;">#{{ item.id }}</span>
+            </div>
+          </el-tooltip>
+        </el-option>
+      </el-select>
+      <template #footer>
+        <el-button @click="showRefDialog = false">取消</el-button>
+      </template>
+    </el-dialog>
+
     <label>
       同级排序
       <el-input-number v-model="nodeForm.orderNo" data-testid="node-order" :min="0" />
@@ -104,3 +211,90 @@ defineEmits([
     </div>
   </aside>
 </template>
+
+<style scoped>
+.inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;
+  border-left: 1px solid var(--el-border-color-light);
+  overflow-y: auto;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.section-heading h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.section-heading span {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.relation-title {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.helper-text {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.label-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.relation-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.relation-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.empty.small {
+  text-align: center;
+  color: var(--el-text-color-placeholder);
+  padding: 16px;
+  font-size: 13px;
+}
+</style>

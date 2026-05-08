@@ -21,13 +21,71 @@ public sealed class NodeRelationRepository : INodeRelationRepository
         await using var connection = await _connectionFactory.OpenAsync();
         await using var command = new NpgsqlCommand(
             """
-            SELECT id, source_id, target_id, relation_type, weight, map_id, created_at, is_deleted, deleted_at
-            FROM node_relation
-            WHERE map_id = @map_id AND is_deleted = FALSE
-            ORDER BY id;
+            SELECT r.id, r.source_id, r.target_id, r.relation_type, r.weight, r.map_id, r.created_at, r.is_deleted, r.deleted_at,
+                   s.title as source_title, t.title as target_title,
+                   s.map_id as source_map_id, t.map_id as target_map_id
+            FROM node_relation r
+            JOIN node s ON r.source_id = s.id
+            JOIN node t ON r.target_id = t.id
+            WHERE r.map_id = @map_id AND r.is_deleted = FALSE
+            ORDER BY r.id;
             """,
             connection);
         command.Parameters.AddWithValue("map_id", mapId);
+
+        var result = new List<NodeRelationEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(ReadRelation(reader));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<NodeRelationEntity>> ListBySourceAsync(long sourceId)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT r.id, r.source_id, r.target_id, r.relation_type, r.weight, r.map_id, r.created_at, r.is_deleted, r.deleted_at,
+                   s.title as source_title, t.title as target_title,
+                   s.map_id as source_map_id, t.map_id as target_map_id
+            FROM node_relation r
+            JOIN node s ON r.source_id = s.id
+            JOIN node t ON r.target_id = t.id
+            WHERE r.source_id = @source_id AND r.is_deleted = FALSE
+            ORDER BY r.id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("source_id", sourceId);
+
+        var result = new List<NodeRelationEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(ReadRelation(reader));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<NodeRelationEntity>> ListByNodeAsync(long nodeId)
+    {
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT r.id, r.source_id, r.target_id, r.relation_type, r.weight, r.map_id, r.created_at, r.is_deleted, r.deleted_at,
+                   s.title as source_title, t.title as target_title,
+                   s.map_id as source_map_id, t.map_id as target_map_id
+            FROM node_relation r
+            JOIN node s ON r.source_id = s.id
+            JOIN node t ON r.target_id = t.id
+            WHERE (r.source_id = @node_id OR r.target_id = @node_id) AND r.is_deleted = FALSE
+            ORDER BY r.id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("node_id", nodeId);
 
         var result = new List<NodeRelationEntity>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -44,9 +102,13 @@ public sealed class NodeRelationRepository : INodeRelationRepository
         await using var connection = await _connectionFactory.OpenAsync();
         await using var command = new NpgsqlCommand(
             """
-            SELECT id, source_id, target_id, relation_type, weight, map_id, created_at, is_deleted, deleted_at
-            FROM node_relation
-            WHERE id = @id AND is_deleted = FALSE;
+            SELECT r.id, r.source_id, r.target_id, r.relation_type, r.weight, r.map_id, r.created_at, r.is_deleted, r.deleted_at,
+                   s.title as source_title, t.title as target_title,
+                   s.map_id as source_map_id, t.map_id as target_map_id
+            FROM node_relation r
+            JOIN node s ON r.source_id = s.id
+            JOIN node t ON r.target_id = t.id
+            WHERE r.id = @id AND r.is_deleted = FALSE;
             """,
             connection);
         command.Parameters.AddWithValue("id", id);
@@ -63,10 +125,10 @@ public sealed class NodeRelationRepository : INodeRelationRepository
         }
 
         await using var connection = await _connectionFactory.OpenAsync();
-        var endpointCount = await CountExistingEndpointsAsync(connection, mapId, sourceId, targetId);
+        var endpointCount = await CountExistingEndpointsAsync(connection, sourceId, targetId);
         if (endpointCount != 2)
         {
-            throw new InvalidOperationException("源节点和目标节点必须存在于同一导图中。");
+            throw new InvalidOperationException("源节点或目标节点不存在。");
         }
 
         await using var command = new NpgsqlCommand(
@@ -182,18 +244,16 @@ public sealed class NodeRelationRepository : INodeRelationRepository
         _logger.Info("存储层写操作", operation, values);
     }
 
-    private static async Task<long> CountExistingEndpointsAsync(NpgsqlConnection connection, long mapId, long sourceId, long targetId)
+    private static async Task<long> CountExistingEndpointsAsync(NpgsqlConnection connection, long sourceId, long targetId)
     {
         await using var command = new NpgsqlCommand(
             """
             SELECT count(*)
             FROM node
-            WHERE map_id = @map_id
-              AND id IN (@source_id, @target_id)
+            WHERE id IN (@source_id, @target_id)
               AND is_deleted = FALSE;
             """,
             connection);
-        command.Parameters.AddWithValue("map_id", mapId);
         command.Parameters.AddWithValue("source_id", sourceId);
         command.Parameters.AddWithValue("target_id", targetId);
 
@@ -202,7 +262,7 @@ public sealed class NodeRelationRepository : INodeRelationRepository
 
     private static NodeRelationEntity ReadRelation(NpgsqlDataReader reader)
     {
-        return new NodeRelationEntity
+        var entity = new NodeRelationEntity
         {
             Id = reader.GetInt64(0),
             SourceId = reader.GetInt64(1),
@@ -214,5 +274,17 @@ public sealed class NodeRelationRepository : INodeRelationRepository
             IsDeleted = reader.GetBoolean(7),
             DeletedAt = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8)
         };
+
+        // 读取可选的标题和导图ID（如果 SQL 中包含 JOIN）
+        for (int i = 9; i < reader.FieldCount; i++)
+        {
+            var name = reader.GetName(i).ToLowerInvariant();
+            if (name == "source_title" && !reader.IsDBNull(i)) entity.SourceTitle = reader.GetString(i);
+            else if (name == "target_title" && !reader.IsDBNull(i)) entity.TargetTitle = reader.GetString(i);
+            else if (name == "source_map_id" && !reader.IsDBNull(i)) entity.SourceMapId = reader.GetInt64(i);
+            else if (name == "target_map_id" && !reader.IsDBNull(i)) entity.TargetMapId = reader.GetInt64(i);
+        }
+
+        return entity;
     }
 }

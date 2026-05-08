@@ -6,6 +6,8 @@ public sealed class NodeDto
 
     public long MapId { get; init; }
 
+    public string? MapTitle { get; init; }
+
     public long? ParentId { get; init; }
 
     public string Title { get; init; } = string.Empty;

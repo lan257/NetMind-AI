@@ -356,6 +356,46 @@ export function useMindMapWorkspace() {
     }
   }
 
+  async function jumpToNode({ mapId, nodeId }) {
+    if (selectedMapId.value === mapId) {
+      selectedNodeId.value = nodeId;
+      // 找到节点并填充表单
+      const node = nodes.value.find(n => n.id === nodeId);
+      if (node) fillNodeForm(node);
+    } else {
+      // 切换导图
+      selectedMapId.value = mapId;
+      let map = maps.value.find(m => m.id === mapId);
+      
+      if (!map) {
+        // 如果不在当前列表中，尝试刷新列表
+        const data = await run(() => api('/api/mind-maps'));
+        if (data) {
+          maps.value = data;
+          map = maps.value.find(m => m.id === mapId);
+        }
+      }
+
+      if (map) {
+        mapTitle.value = map.title;
+        await refreshMapData(mapId, { keepNodeId: nodeId, message: `已切换至导图：${map.title}` });
+        // 数据刷新后填充表单
+        const node = nodes.value.find(n => n.id === nodeId);
+        if (node) fillNodeForm(node);
+      } else {
+        showToast('error', '无法找到目标思维导图');
+      }
+    }
+  }
+
+  async function searchNodes(keyword, limit = 10, crossMap = true) {
+    if (!keyword) {
+      return [];
+    }
+    const mapIdParam = crossMap ? '' : `&mapId=${selectedMapId.value}`;
+    return run(() => api(`/api/nodes/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}${mapIdParam}`));
+  }
+
   function exportStructure() {
     if (!selectedMap.value) {
       showToast('error', '请先选择导图');
@@ -580,6 +620,8 @@ export function useMindMapWorkspace() {
     deleteNode,
     createRelation,
     deleteRelation,
+    jumpToNode,
+    searchNodes,
     exportStructure,
     downloadSelectedMap,
     downloadUrl,
