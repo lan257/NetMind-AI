@@ -18,40 +18,15 @@ defineEmits(['select-map', 'create-map', 'delete-map']);
       <span>{{ maps.length }} 个</span>
     </div>
     <div class="sidebar-actions" v-if="deletable">
-      <el-button class="wide-action" type="primary" :icon="Plus" data-testid="open-create-map" @click="$emit('create-map')">
-        新增
-      </el-button>
-      <el-popconfirm
-        title="确认删除当前思维导图及其节点？"
-        confirm-button-text="删除"
-        cancel-button-text="取消"
-        confirm-button-type="danger"
-        @confirm="$emit('delete-map')"
-      >
+      <el-button class="wide-action" type="primary" :icon="Plus" data-testid="open-create-map" @click="$emit('create-map')">新增</el-button>
+      <el-popconfirm title="确认删除当前思维导图及其节点？" confirm-button-text="删除" cancel-button-text="取消" confirm-button-type="danger" @confirm="$emit('delete-map')">
         <template #reference>
-          <el-button
-            class="wide-action"
-            type="danger"
-            plain
-            :icon="Delete"
-            data-testid="delete-selected-map"
-            :disabled="loading || !selectedMapId"
-          >
-            删除
-          </el-button>
+          <el-button class="wide-action" type="danger" plain :icon="Delete" data-testid="delete-selected-map" :disabled="loading || !selectedMapId">删除</el-button>
         </template>
       </el-popconfirm>
     </div>
     <div class="map-list">
-      <button
-        v-for="map in maps"
-        :key="map.id"
-        type="button"
-        class="map-item"
-        :class="{ active: map.id === selectedMapId }"
-        :disabled="loading"
-        @click="$emit('select-map', map.id)"
-      >
+      <button v-for="map in maps" :key="map.id" type="button" class="map-item" :class="{ active: map.id === selectedMapId }" :disabled="loading" @click="$emit('select-map', map.id)">
         <span>{{ map.title }}</span>
         <small>#{{ map.id }}</small>
       </button>
@@ -59,3 +34,10 @@ defineEmits(['select-map', 'create-map', 'delete-map']);
     </div>
   </aside>
 </template>
+
+<style scoped>
+.map-list {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+</style>

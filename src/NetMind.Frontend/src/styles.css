@@ -116,6 +116,10 @@ label {
   grid-template-columns: 280px minmax(420px, 1fr) 380px;
 }
 
+.layout.with-knowledge-card {
+  grid-template-columns: 280px minmax(420px, 1fr) 380px;
+}
+
 .sidebar,
 .canvas-panel,
 .inspector,
@@ -741,6 +745,7 @@ input[type="file"] {
 @media (max-width: 1180px) {
   .layout,
   .layout.with-inspector,
+  .layout.with-knowledge-card,
   .create-grid {
     grid-template-columns: 1fr;
   }

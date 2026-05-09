@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, nextTick, watch } from 'vue';
 import { Link } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 
@@ -29,6 +29,7 @@ const searchKeyword = ref('');
 const searchResults = ref([]);
 const searching = ref(false);
 const showRefDialog = ref(false);
+const refTriggerPos = ref({ start: -1, end: -1 });
 
 async function handleSearch(query) {
   if (!query) {
@@ -38,7 +39,6 @@ async function handleSearch(query) {
   searching.value = true;
   try {
     const results = await props.searchNodes(query);
-    // 过滤掉当前正在编辑的节点
     searchResults.value = results.filter(n => n.id !== props.selectedNode?.id);
   } finally {
     searching.value = false;
@@ -48,25 +48,38 @@ async function handleSearch(query) {
 function insertReference(node) {
   const refText = `[[${node.title}|${node.id}]]`;
   const content = props.nodeForm.content || '';
-  
-  // 如果是因为输入 [[ 触发的，尝试替换最后的 [[
-  if (content.endsWith('[[')) {
-    props.nodeForm.content = content.slice(0, -2) + refText;
+
+  if (refTriggerPos.value.start >= 0) {
+    const before = content.slice(0, refTriggerPos.value.start);
+    const after = content.slice(refTriggerPos.value.end);
+    props.nodeForm.content = before + refText + after;
   } else {
     props.nodeForm.content = content + (content.length > 0 && !content.endsWith('\n') ? '\n' : '') + refText;
   }
-  
+
   showRefDialog.value = false;
   searchKeyword.value = '';
   searchResults.value = [];
+  refTriggerPos.value = { start: -1, end: -1 };
 }
 
-// 自动触发 [[
-watch(() => props.nodeForm.content, (newVal, oldVal) => {
-  if (newVal && newVal.endsWith('[[') && (newVal.length > (oldVal?.length ?? 0))) {
+function onContentKeyup(event) {
+  const el = event.target;
+  if (!el) return;
+  const pos = el.selectionStart;
+  const text = el.value || '';
+  if (pos >= 2 && text.slice(pos - 2, pos) === '[[') {
+    refTriggerPos.value = { start: pos - 2, end: pos };
     showRefDialog.value = true;
   }
-});
+}
+
+function onRefDialogOpened() {
+  nextTick(() => {
+    const input = document.querySelector('.ref-dialog-select-wrap .el-select__input');
+    if (input) input.focus();
+  });
+}
 </script>
 
 <template>
@@ -102,10 +115,11 @@ watch(() => props.nodeForm.content, (newVal, oldVal) => {
         type="textarea"
         :rows="5"
         placeholder="记录这个节点的说明、结论或待办。使用 [[标题|ID]] 引用其他节点。"
+        @keyup="onContentKeyup"
       />
     </label>
 
-    <el-dialog v-model="showRefDialog" title="插入节点引用 (全局)" width="400px" append-to-body>
+    <el-dialog v-model="showRefDialog" title="插入节点引用 (全局)" width="min(400px, calc(100vw - 32px))" append-to-body @opened="onRefDialogOpened">
       <el-select
         v-model="searchKeyword"
         filterable
@@ -115,6 +129,8 @@ watch(() => props.nodeForm.content, (newVal, oldVal) => {
         :remote-method="handleSearch"
         :loading="searching"
         style="width: 100%"
+        popper-class="ref-dialog-select"
+        class="ref-dialog-select-wrap"
         @change="(id) => {
           const node = searchResults.find(n => n.id === id);
           if (node) insertReference(node);

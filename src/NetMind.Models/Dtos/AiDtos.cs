@@ -22,6 +22,8 @@ public sealed class AiCleanRequest
     public string NaturalLanguage { get; init; } = string.Empty;
 
     public string? ModelId { get; init; }
+
+    public string? ApiKey { get; init; }
 }
 
 public sealed class AiRequirementStructureRequest
@@ -31,6 +33,8 @@ public sealed class AiRequirementStructureRequest
     public string Context { get; init; } = string.Empty;
 
     public string? ModelId { get; init; }
+
+    public string? ApiKey { get; init; }
 }
 
 public sealed class AiContextChatRequest
@@ -42,6 +46,8 @@ public sealed class AiContextChatRequest
     public string Context { get; init; } = string.Empty;
 
     public string? ModelId { get; init; }
+
+    public string? ApiKey { get; init; }
 }
 
 public sealed class AiCleanResultDto

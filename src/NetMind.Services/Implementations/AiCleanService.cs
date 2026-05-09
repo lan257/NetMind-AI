@@ -72,7 +72,7 @@ public sealed class AiCleanService : IAiCleanService
         {
             try
             {
-                var content = await CallModelAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt, request.ApiKey);
 
                 var transfer = ParseTransfer(content);
                 ValidateTransfer(transfer);
@@ -109,9 +109,9 @@ public sealed class AiCleanService : IAiCleanService
         {
             try
             {
-                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context);
+                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context, request.ApiKey);
                 var prompt = BuildContextChatPrompt(request.Message, contextResult.Context);
-                var content = await CallModelAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt, request.ApiKey);
                 var reply = ParseContextChatReply(content);
 
                 return new AiContextChatResultDto
@@ -148,9 +148,9 @@ public sealed class AiCleanService : IAiCleanService
         {
             try
             {
-                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context);
+                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context, request.ApiKey);
                 var prompt = BuildRequirementPrompt(request.Requirement, contextResult.Context);
-                var content = await CallModelAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt, request.ApiKey);
                 var transfer = ParseTransfer(content);
                 ValidateTransfer(transfer);
 
@@ -198,13 +198,13 @@ public sealed class AiCleanService : IAiCleanService
             .ToList();
     }
 
-    private async Task<string> CallOpenAiCompatibleAsync(AiModelOptions model, string prompt)
+    private async Task<string> CallOpenAiCompatibleAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
     {
         var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Post, model.Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        var apiKey = ResolveApiKey(model);
+        var apiKey = apiKeyOverride ?? ResolveApiKey(model);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException($"AI 模型 '{model.Id}' 需要配置 API Key。");
@@ -243,7 +243,7 @@ public sealed class AiCleanService : IAiCleanService
         return content ?? throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回内容为空。");
     }
 
-    private async Task<string> CallOllamaAsync(AiModelOptions model, string prompt)
+    private async Task<string> CallOllamaAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
     {
         var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Post, model.Endpoint);
@@ -280,11 +280,11 @@ public sealed class AiCleanService : IAiCleanService
         return content ?? throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回内容为空。");
     }
 
-    private Task<string> CallModelAsync(AiModelOptions model, string prompt)
+    private Task<string> CallModelAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
     {
         return model.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase)
-            ? CallOllamaAsync(model, prompt)
-            : CallOpenAiCompatibleAsync(model, prompt);
+            ? CallOllamaAsync(model, prompt, apiKeyOverride)
+            : CallOpenAiCompatibleAsync(model, prompt, apiKeyOverride);
     }
 
     private static MindMapTransferDto ParseTransfer(string content)
@@ -393,7 +393,7 @@ public sealed class AiCleanService : IAiCleanService
             .Replace("{{context}}", string.IsNullOrWhiteSpace(context) ? "No previous conversation." : context.Trim(), StringComparison.Ordinal);
     }
 
-    private async Task<(string Context, bool WasCompressed)> CompressContextIfNeededAsync(AiModelOptions model, string? context)
+    private async Task<(string Context, bool WasCompressed)> CompressContextIfNeededAsync(AiModelOptions model, string? context, string? apiKeyOverride = null)
     {
         var trimmed = context?.Trim() ?? string.Empty;
         if (trimmed.Length == 0)
@@ -408,7 +408,7 @@ public sealed class AiCleanService : IAiCleanService
 
         var prompt = _contextCompressionPromptTemplate
             .Replace("{{context}}", trimmed, StringComparison.Ordinal);
-        var compressed = ParseContextSummary(await CallModelAsync(model, prompt));
+        var compressed = ParseContextSummary(await CallModelAsync(model, prompt, apiKeyOverride));
         if (string.IsNullOrWhiteSpace(compressed))
         {
             throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回的上下文摘要为空。");
@@ -465,7 +465,7 @@ public sealed class AiCleanService : IAiCleanService
 
         return string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable)
             ? null
-            : Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
+            : Environment.GetEnvironmentVariable(model.ApiKeyEnvironmentVariable);
     }
 
     private static string StripMarkdownFence(string value)

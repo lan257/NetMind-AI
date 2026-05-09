@@ -11,7 +11,8 @@ const props = defineProps({
   previewOnClick: { type: Boolean, default: true },
   editable: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
-  searchNodes: { type: Function, default: null }
+  searchNodes: { type: Function, default: null },
+  hideCanvasEditor: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node', 'save-node-positions']);
@@ -33,6 +34,7 @@ const searchKeyword = ref('');
 const searchResults = ref([]);
 const searching = ref(false);
 const showRefDialog = ref(false);
+const refTriggerPos = ref({ start: -1, end: -1 });
 
 async function handleSearch(query) {
   if (!query) {
@@ -54,8 +56,10 @@ function insertReference(node) {
   const content = editorForm.value.content || '';
   
   // 如果是因为输入 [[ 触发的，尝试替换最后的 [[
-  if (content.endsWith('[[')) {
-    editorForm.value.content = content.slice(0, -2) + refText;
+  if (refTriggerPos.value.start >= 0) {
+    const before = content.slice(0, refTriggerPos.value.start);
+    const after = content.slice(refTriggerPos.value.end);
+    editorForm.value.content = before + refText + after;
   } else {
     editorForm.value.content = content + (content.length > 0 && !content.endsWith('\n') ? '\n' : '') + refText;
   }
@@ -63,6 +67,25 @@ function insertReference(node) {
   showRefDialog.value = false;
   searchKeyword.value = '';
   searchResults.value = [];
+  refTriggerPos.value = { start: -1, end: -1 };
+}
+
+function onContentKeyup(event) {
+  const el = event.target;
+  if (!el) return;
+  const pos = el.selectionStart;
+  const text = el.value || '';
+  if (pos >= 2 && text.slice(pos - 2, pos) === '[[') {
+    refTriggerPos.value = { start: pos - 2, end: pos };
+    showRefDialog.value = true;
+  }
+}
+
+function onRefDialogOpened() {
+  nextTick(() => {
+    const input = document.querySelector('.ref-dialog-select-wrap .el-select__input');
+    if (input) input.focus();
+  });
 }
 
 function getSavedPosition(node) {
@@ -73,12 +96,7 @@ function getSavedPosition(node) {
   return null;
 }
 
-// 自动触发 [[
-watch(() => editorForm.value.content, (newVal, oldVal) => {
-  if (newVal && newVal.endsWith('[[') && (newVal.length > (oldVal?.length ?? 0))) {
-    showRefDialog.value = true;
-  }
-});
+// [[ 触发现在通过 onContentKeyup 在 keyup 事件中处理
 
 const selectedNode = computed(() => props.nodes.find((node) => node.id === props.selectedNodeId) ?? null);
 const unsavedPositionCount = computed(() => unsavedPositionIds.value.size);
@@ -685,7 +703,7 @@ onBeforeUnmount(() => {
         @pointerleave="handlePointerLeave"
         @wheel="handleWheel"
       />
-      <div v-if="editable" class="canvas-editor" data-testid="canvas-node-editor">
+      <div v-if="editable && !hideCanvasEditor" class="canvas-editor" data-testid="canvas-node-editor">
         <div class="canvas-editor-title">
           <el-icon><EditPen /></el-icon>
           <div>
@@ -707,7 +725,7 @@ onBeforeUnmount(() => {
             插入引用
           </el-button>
         </div>
-        <el-input v-model="editorForm.content" data-testid="canvas-node-content" type="textarea" :rows="3" placeholder="节点内容。输入 [[ 快捷引用。" />
+        <el-input v-model="editorForm.content" data-testid="canvas-node-content" type="textarea" :rows="3" placeholder="节点内容。输入 [[ 快捷引用。" @keyup="onContentKeyup" />
         
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="white-space: nowrap; color: #606266;">同级排序</span>
@@ -719,7 +737,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <el-dialog v-model="showRefDialog" title="插入节点引用 (全局)" width="400px" append-to-body>
+    <el-dialog v-model="showRefDialog" title="插入节点引用 (全局)" width="min(400px, calc(100vw - 32px))" append-to-body @opened="onRefDialogOpened">
       <el-select
         v-model="searchKeyword"
         filterable
@@ -729,6 +747,8 @@ onBeforeUnmount(() => {
         :remote-method="handleSearch"
         :loading="searching"
         style="width: 100%"
+        popper-class="ref-dialog-select"
+        class="ref-dialog-select-wrap"
         @change="(id) => {
           const node = searchResults.find(n => n.id === id);
           if (node) insertReference(node);

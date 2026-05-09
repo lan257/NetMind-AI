@@ -5,10 +5,9 @@ import CreateMapPage from './components/CreateMapPage.vue';
 import FloatingMessage from './components/FloatingMessage.vue';
 import MapSidebar from './components/MapSidebar.vue';
 import MindMapCanvas from './components/MindMapCanvas.vue';
-import NodePreviewDialog from './components/NodePreviewDialog.vue';
+import KnowledgeCard from './components/KnowledgeCard.vue';
 import NodeTreeView from './components/NodeTreeView.vue';
-import ViewSwitcher from './components/ViewSwitcher.vue';
-import WorkbenchInspector from './components/WorkbenchInspector.vue';
+import SettingsDialog from './components/SettingsDialog.vue';
 import { useMindMapWorkspace } from './composables/useMindMapWorkspace';
 
 const workspace = useMindMapWorkspace();
@@ -16,8 +15,8 @@ const page = ref('main');
 const workMode = ref('display');
 const viewMode = ref('graph');
 const createViewMode = ref('graph');
-const previewOpen = ref(false);
 const previewNode = ref(null);
+const settingsOpen = ref(false);
 
 function openCreatePage() {
   page.value = 'create';
@@ -36,7 +35,10 @@ async function createMapAndReturn() {
 
 function preview(node) {
   previewNode.value = node;
-  previewOpen.value = true;
+}
+
+function openSettings() {
+  settingsOpen.value = true;
 }
 
 onMounted(async () => {
@@ -49,14 +51,18 @@ onMounted(async () => {
     <AppHeader
       :page="page"
       :search-nodes="workspace.searchNodes"
+      :work-mode="workMode"
+      :view-mode="viewMode"
       @go-main="openMainPage"
       @jump-to-node="workspace.jumpToNode"
+      @open-settings="openSettings"
+      @update:work-mode="workMode = $event"
+      @update:view-mode="viewMode = $event"
     />
     <FloatingMessage :toast="workspace.toast.value" />
 
     <template v-if="page === 'main'">
-      <ViewSwitcher v-model:work-mode="workMode" v-model:view-mode="viewMode" />
-      <section class="layout" :class="{ 'with-inspector': workMode === 'workbench' && viewMode === 'list' }">
+      <section class="layout" :class="{ 'with-knowledge-card': workMode === 'display' || workMode === 'workbench' }">
         <MapSidebar
           :maps="workspace.maps.value"
           :selected-map-id="workspace.selectedMapId.value"
@@ -76,12 +82,13 @@ onMounted(async () => {
           :loading="workspace.loading.value"
           :preview-on-click="workMode !== 'workbench'"
           :search-nodes="workspace.searchNodes"
+          :hide-canvas-editor="workMode === 'workbench'"
           @select-node="workspace.selectNode"
           @preview-node="preview"
           @create-node="workspace.createCanvasNode"
           @update-node="workspace.updateCanvasNode"
           @save-node-positions="workspace.saveCanvasNodePositions"
-          @delete-node="workspace.deleteNode(false)"
+          @delete-node="workspace.deleteNode(true)"
         />
         <NodeTreeView
           v-else
@@ -89,13 +96,21 @@ onMounted(async () => {
           :nodes="workspace.nodes.value"
           :selected-node-id="workspace.selectedNodeId.value"
           :preview-on-click="workMode !== 'workbench'"
+          :editable="workMode === 'workbench'"
+          :loading="workspace.loading.value"
+          :selected-node="workspace.selectedNode.value"
           @select-node="workspace.selectNode"
           @preview-node="preview"
+          @create-root="workspace.createNode(null)"
+          @create-child="workspace.createNode(workspace.selectedNode.value?.id ?? null)"
+          @delete-node="workspace.deleteNode(true)"
         />
-        <WorkbenchInspector
-          v-if="workMode === 'workbench' && viewMode === 'list'"
-          :selected-map="workspace.selectedMap.value"
-          :selected-node="workspace.selectedNode.value"
+        <KnowledgeCard
+          :node="previewNode"
+          :nodes="workspace.nodes.value"
+          :relations="workspace.relations.value"
+          :current-map-id="workspace.selectedMap.value?.id"
+          :work-mode="workMode"
           :node-form="workspace.nodeForm.value"
           :relation-form="workspace.relationForm.value"
           :candidate-targets="workspace.candidateTargets.value"
@@ -103,11 +118,9 @@ onMounted(async () => {
           :node-title-by-id="workspace.nodeTitleById.value"
           :loading="workspace.loading.value"
           :search-nodes="workspace.searchNodes"
-          @create-root="workspace.createNode(null)"
-          @create-child="workspace.createNode(workspace.selectedNode.value?.id ?? null)"
+          @preview-node="preview"
+          @jump-to-node="workspace.jumpToNode"
           @save-node="workspace.updateNode"
-          @delete-node="workspace.deleteNode(false)"
-          @delete-subtree="workspace.deleteNode(true)"
           @create-relation="workspace.createRelation"
           @delete-relation="workspace.deleteRelation"
         />
@@ -123,14 +136,6 @@ onMounted(async () => {
       @preview-node="preview"
     />
 
-    <NodePreviewDialog
-      v-model="previewOpen"
-      :node="previewNode"
-      :nodes="workspace.nodes.value"
-      :relations="workspace.relations.value"
-      :current-map-id="workspace.selectedMap.value?.id"
-      @preview-node="preview"
-      @jump-to-node="workspace.jumpToNode"
-    />
+    <SettingsDialog v-model="settingsOpen" />
   </main>
 </template>

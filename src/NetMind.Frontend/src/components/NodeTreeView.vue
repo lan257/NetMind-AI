@@ -1,15 +1,18 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { ArrowDown, ArrowRight } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowRight, Plus, Delete } from '@element-plus/icons-vue';
 
 const props = defineProps({
   nodes: { type: Array, default: () => [] },
   map: { type: Object, default: null },
   selectedNodeId: { type: [Number, String, null], default: null },
-  previewOnClick: { type: Boolean, default: true }
+  previewOnClick: { type: Boolean, default: true },
+  editable: { type: Boolean, default: false },
+  loading: { type: Boolean, default: false },
+  selectedNode: { type: Object, default: null }
 });
 
-const emit = defineEmits(['select-node', 'preview-node']);
+const emit = defineEmits(['select-node', 'preview-node', 'create-root', 'create-child', 'delete-node']);
 const collapsedIds = ref(new Set());
 
 const nodeRows = computed(() => {
@@ -71,6 +74,11 @@ function openNode(node) {
       <h2>{{ map?.title ?? '未选择导图' }}</h2>
       <span>{{ nodes.length }} 个节点</span>
     </div>
+    <div v-if="editable" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px;">
+      <el-button size="small" type="primary" :icon="Plus" :disabled="loading || !map" @click="$emit('create-root')">根节点</el-button>
+      <el-button size="small" :icon="Plus" :disabled="loading || !map || !selectedNode" @click="$emit('create-child')">子节点</el-button>
+      <el-button size="small" type="danger" :icon="Delete" :disabled="loading || !selectedNode" @click="$emit('delete-node')">删除</el-button>
+    </div>
     <div v-if="nodeRows.length === 0" class="empty">暂无节点。</div>
     <div v-else class="node-list" data-testid="node-list">
       <div
@@ -99,3 +107,10 @@ function openNode(node) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.node-list {
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+</style>
