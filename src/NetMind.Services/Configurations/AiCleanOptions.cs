@@ -49,4 +49,8 @@ public sealed class AiPromptOptions
     public IReadOnlyList<string> NodeChatPromptTemplateLines { get; init; } = Array.Empty<string>();
 
     public IReadOnlyList<string> NodeChatCompressionPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> AppHelpPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> AppManualLines { get; init; } = Array.Empty<string>();
 }

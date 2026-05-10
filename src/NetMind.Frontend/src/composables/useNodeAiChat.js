@@ -12,7 +12,14 @@ function loadMaxContextLength() {
   }
 }
 
-export function useNodeAiChat() {
+function createConversationId(prefix) {
+  const uuid = window.crypto?.randomUUID
+    ? window.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}-${uuid}`;
+}
+
+export function useNodeAiChat(initialMode = 'node') {
   const messages = ref([]);
   const inputText = ref('');
   const loading = ref(false);
@@ -22,6 +29,18 @@ export function useNodeAiChat() {
   const lastResult = ref(null);
 
   const maxContextLength = ref(loadMaxContextLength());
+  const chatMode = ref(initialMode);
+
+  function conversationPrefix() {
+    if (chatMode.value === 'app-help') return 'help';
+    return 'node';
+  }
+  const conversationId = ref(createConversationId(conversationPrefix()));
+
+  // History state
+  const historyOpen = ref(false);
+  const historyLoading = ref(false);
+  const historyGroups = ref([]);
 
   const contextText = computed(() => {
     return messages.value
@@ -55,7 +74,10 @@ export function useNodeAiChat() {
 
   async function sendMessage(node, modelId, apiKey) {
     const text = inputText.value.trim();
-    if (!text || !node) return;
+    if (!text) return;
+
+    // App-help mode doesn't require a node
+    if (chatMode.value !== 'app-help' && !node) return;
 
     inputText.value = '';
     messages.value.push({ role: 'user', content: text });
@@ -64,16 +86,34 @@ export function useNodeAiChat() {
     refreshMaxContextLength();
 
     try {
-      const result = await api('/api/ai/node-chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          nodeId: node.id,
+      let endpoint, body;
+
+      if (chatMode.value === 'app-help') {
+        endpoint = '/api/ai/app-help-chat';
+        body = {
           message: text,
           context: getContextText(),
+          conversationId: conversationId.value,
           modelId: modelId || null,
           apiKey: apiKey || null,
           maxContextLength: maxContextLength.value
-        })
+        };
+      } else {
+        endpoint = '/api/ai/node-chat';
+        body = {
+          nodeId: node.id,
+          message: text,
+          context: getContextText(),
+          conversationId: conversationId.value,
+          modelId: modelId || null,
+          apiKey: apiKey || null,
+          maxContextLength: maxContextLength.value
+        };
+      }
+
+      const result = await api(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(body)
       });
 
       if (result) {
@@ -104,6 +144,67 @@ export function useNodeAiChat() {
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
+    conversationId.value = createConversationId(conversationPrefix());
+  }
+
+  function startNewConversation() {
+    clearChat();
+  }
+
+  async function loadHistory() {
+    historyOpen.value = true;
+    historyLoading.value = true;
+    try {
+      const records = await api('/api/ai-conversation-records');
+      const prefix = conversationPrefix();
+
+      // Filter by conversationId prefix for current mode
+      const filtered = records.filter(r =>
+        r.conversationId && r.conversationId.startsWith(prefix + '-')
+      );
+
+      const groups = new Map();
+      filtered.forEach((record) => {
+        if (!groups.has(record.conversationId)) {
+          groups.set(record.conversationId, []);
+        }
+        groups.get(record.conversationId).push(record);
+      });
+
+      historyGroups.value = [...groups.entries()]
+        .map(([cid, items]) => {
+          const ordered = [...items].sort(
+            (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+          );
+          const firstUser = ordered.find((item) => item.role === 'user');
+          const last = ordered[ordered.length - 1];
+          return {
+            conversationId: cid,
+            records: ordered,
+            title: firstUser?.content?.slice(0, 36) || '未命名对话',
+            updatedAt: last?.updatedAt ?? last?.createdAt ?? '',
+            count: ordered.length
+          };
+        })
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    } catch (err) {
+      console.error('Failed to load conversation history:', err);
+    } finally {
+      historyLoading.value = false;
+    }
+  }
+
+  function restoreConversation(group) {
+    conversationId.value = group.conversationId;
+    messages.value = group.records.map((record) => ({
+      role: record.role,
+      content: record.content
+    }));
+    compressedContext.value = '';
+    contextUsagePercent.value = 0;
+    contextStatus.value = 'comfortable';
+    lastResult.value = null;
+    historyOpen.value = false;
   }
 
   return {
@@ -117,8 +218,16 @@ export function useNodeAiChat() {
     contextUsageClass,
     maxContextLength,
     lastResult,
+    chatMode,
+    conversationId,
+    historyOpen,
+    historyLoading,
+    historyGroups,
     sendMessage,
     clearChat,
+    startNewConversation,
+    loadHistory,
+    restoreConversation,
     refreshMaxContextLength
   };
 }

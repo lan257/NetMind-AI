@@ -84,6 +84,8 @@ public sealed class AiNodeChatRequest
 
     public string Context { get; init; } = string.Empty;
 
+    public string? ConversationId { get; init; }
+
     public string? ModelId { get; init; }
 
     public string? ApiKey { get; init; }
@@ -121,6 +123,40 @@ public sealed class AiRequirementStructureResultDto
     public bool WasContextCompressed { get; init; }
 
     public MindMapTransferDto Transfer { get; init; } = new();
+
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+}
+
+public sealed class AiAppHelpRequest
+{
+    public string Message { get; init; } = string.Empty;
+
+    public string Context { get; init; } = string.Empty;
+
+    public string? ConversationId { get; init; }
+
+    public string? ModelId { get; init; }
+
+    public string? ApiKey { get; init; }
+
+    public int MaxContextLength { get; init; } = 51200;
+}
+
+public sealed class AiAppHelpResult
+{
+    public AiModelOptionDto SelectedModel { get; init; } = new();
+
+    public string Prompt { get; init; } = string.Empty;
+
+    public string Reply { get; init; } = string.Empty;
+
+    public string CompressedContext { get; init; } = string.Empty;
+
+    public bool WasContextCompressed { get; init; }
+
+    public double ContextUsagePercent { get; init; }
+
+    public string ContextStatus { get; init; } = string.Empty;
 
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
 }

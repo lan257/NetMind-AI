@@ -55,11 +55,66 @@ public sealed class AiController : ControllerBase
     {
         try
         {
-            return ApiResult<AiNodeChatResult>.Ok(await _aiCleanService.ChatWithNodeAsync(request));
+            var result = await _aiCleanService.ChatWithNodeAsync(request);
+            if (!string.IsNullOrWhiteSpace(request.ConversationId))
+            {
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "user",
+                    Content = request.Message,
+                    ModelId = request.ModelId
+                });
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "assistant",
+                    Content = result.Reply,
+                    ModelId = result.SelectedModel.Id,
+                    Prompt = result.Prompt,
+                    WasContextCompressed = result.WasContextCompressed
+                });
+            }
+
+            return ApiResult<AiNodeChatResult>.Ok(result);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
         {
             return BadRequest(ApiResult<AiNodeChatResult>.Fail(ex.Message));
+        }
+    }
+
+    [HttpPost("app-help-chat")]
+    public async Task<ActionResult<ApiResult<AiAppHelpResult>>> ChatForAppHelpAsync(AiAppHelpRequest request)
+    {
+        try
+        {
+            var result = await _aiCleanService.ChatForAppHelpAsync(request);
+            if (!string.IsNullOrWhiteSpace(request.ConversationId))
+            {
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "user",
+                    Content = request.Message,
+                    ModelId = request.ModelId
+                });
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "assistant",
+                    Content = result.Reply,
+                    ModelId = result.SelectedModel.Id,
+                    Prompt = result.Prompt,
+                    WasContextCompressed = result.WasContextCompressed
+                });
+            }
+
+            return ApiResult<AiAppHelpResult>.Ok(result);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            return BadRequest(ApiResult<AiAppHelpResult>.Fail(ex.Message));
         }
     }
 

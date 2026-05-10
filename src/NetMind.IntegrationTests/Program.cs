@@ -49,7 +49,9 @@ var aiCleanService = new AiCleanService(
                 "{{context}}"
             },
             NodeChatPromptTemplateLines = new[] { "Node chat prompt." },
-            NodeChatCompressionPromptTemplateLines = new[] { "Node chat compression prompt." }
+            NodeChatCompressionPromptTemplateLines = new[] { "Node chat compression prompt." },
+            AppHelpPromptTemplateLines = new[] { "App help prompt." },
+            AppManualLines = new[] { "App manual content." }
         },
         Models = new[]
         {

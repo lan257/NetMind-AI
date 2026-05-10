@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue';
-import { ChatDotRound, Close, ArrowRight, ArrowLeft } from '@element-plus/icons-vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import { ChatDotRound, Clock, Plus, ArrowRight } from '@element-plus/icons-vue';
 import { useNodeAiChat } from '../composables/useNodeAiChat';
 
 const props = defineProps({
@@ -12,7 +12,17 @@ const props = defineProps({
 const chat = useNodeAiChat();
 
 const collapsed = ref(true);
-const chatMode = ref('node'); // current: only 'node'
+
+const chatModes = [
+  { value: 'node', label: '节点问答（聊天）', icon: ChatDotRound, available: true },
+  { value: 'node-agent', label: '节点问答（Agent）', icon: ChatDotRound, available: false },
+  { value: 'map', label: '全图问答（聊天）', icon: ChatDotRound, available: false },
+  { value: 'map-agent', label: '全图问答（Agent）', icon: ChatDotRound, available: false },
+  { value: 'global', label: '全局问答', icon: ChatDotRound, available: false },
+  { value: 'app-help', label: '应用帮助', icon: ChatDotRound, available: true }
+];
+
+const APP_HELP_INTRO = '你好！我是 NetMind 应用帮助助手。我可以帮你了解如何使用 NetMind 的各项功能，包括思维导图管理、节点编辑、AI 功能、导入导出、界面操作等。请随时向我提问！';
 
 const chatContainer = ref(null);
 
@@ -32,8 +42,22 @@ function scrollToBottom() {
   }
 }
 
+function selectMode(mode) {
+  if (!mode.available) return;
+  chat.chatMode.value = mode.value;
+  chat.clearChat();
+
+  // Show intro message for app-help mode
+  if (mode.value === 'app-help') {
+    chat.messages.value.push({ role: 'assistant', content: APP_HELP_INTRO });
+  }
+}
+
 async function handleSend() {
   if (!chat.inputText.value.trim() || chat.loading.value) return;
+
+  // App-help mode doesn't need a selected node
+  if (chat.chatMode.value !== 'app-help' && !props.node) return;
 
   // Get API key from localStorage custom models or from selected model
   const modelId = props.selectedModelId;
@@ -62,9 +86,23 @@ function handleKeyup(event) {
   }
 }
 
-// Clear chat when node changes
+// Clear chat when node changes (only in node mode)
 watch(() => props.node?.id, () => {
-  chat.clearChat();
+  if (chat.chatMode.value === 'node') {
+    chat.clearChat();
+  }
+});
+
+// Show intro when switching to app-help mode
+watch(() => chat.chatMode.value, (newMode) => {
+  if (newMode === 'app-help' && chat.messages.value.length === 0) {
+    chat.messages.value.push({ role: 'assistant', content: APP_HELP_INTRO });
+  }
+});
+
+const currentModeLabel = computed(() => {
+  const m = chatModes.find(m => m.value === chat.chatMode.value);
+  return m ? m.label : chat.chatMode.value;
 });
 </script>
 
@@ -79,12 +117,23 @@ watch(() => props.node?.id, () => {
     <!-- Expanded panel -->
     <div v-else class="node-ai-chat-panel">
       <div class="chat-panel-header">
-        <div class="chat-mode-tabs">
-          <span class="chat-mode-tab active">
-            <el-icon :size="14"><ChatDotRound /></el-icon>
-            节点聚焦
-          </span>
-        </div>
+        <el-select
+          :model-value="chat.chatMode.value"
+          class="chat-mode-select"
+          size="small"
+          popper-class="chat-mode-popper"
+          @change="(val) => { const m = chatModes.find(cm => cm.value === val); if (m) selectMode(m); }"
+        >
+          <el-option
+            v-for="m in chatModes"
+            :key="m.value"
+            :label="m.label + (m.available ? '' : '（待实现）')"
+            :value="m.value"
+            :disabled="!m.available"
+          />
+        </el-select>
+        <el-button :icon="Clock" size="small" text title="历史对话" @click="chat.loadHistory()" />
+        <el-button :icon="Plus" size="small" text title="新对话" @click="chat.startNewConversation()" />
         <el-button :icon="ArrowRight" size="small" text @click="togglePanel" title="折叠面板" />
       </div>
 
@@ -103,9 +152,22 @@ watch(() => props.node?.id, () => {
       <!-- Messages -->
       <div class="chat-messages" ref="chatContainer">
         <div v-if="chat.messages.value.length === 0" class="chat-empty">
-          <p>AI 节点聚焦助手</p>
-          <p class="chat-empty-hint">针对当前选中节点进行问答或内容完善</p>
-          <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
+          <!-- Node chat mode -->
+          <template v-if="chat.chatMode.value === 'node'">
+            <p>AI 节点聚焦助手</p>
+            <p class="chat-empty-hint">针对当前选中节点进行问答或内容完善</p>
+            <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
+          </template>
+          <!-- App help mode -->
+          <template v-else-if="chat.chatMode.value === 'app-help'">
+            <p>应用帮助助手</p>
+            <p class="chat-empty-hint">关于 NetMind 功能与操作的问题，随时问我</p>
+          </template>
+          <!-- Other placeholder modes -->
+          <template v-else>
+            <p>{{ currentModeLabel }}</p>
+            <p class="chat-empty-hint">该模式尚未实现，敬请期待</p>
+          </template>
         </div>
         <div v-for="(msg, idx) in chat.messages.value" :key="idx" :class="['chat-message', `msg-${msg.role}`]">
           <div class="msg-role">{{ msg.role === 'user' ? '你' : msg.role === 'assistant' ? 'AI' : '系统' }}</div>
@@ -124,13 +186,13 @@ watch(() => props.node?.id, () => {
           type="textarea"
           :rows="2"
           placeholder="输入问题或需求…"
-          :disabled="!node || chat.loading.value"
+          :disabled="(chat.chatMode.value !== 'app-help' && !node) || chat.loading.value"
           @keyup="handleKeyup"
         />
         <el-button
           type="primary"
           :icon="ChatDotRound"
-          :disabled="!chat.inputText.value.trim() || chat.loading.value || !node"
+          :disabled="!chat.inputText.value.trim() || chat.loading.value || (chat.chatMode.value !== 'app-help' && !node)"
           :loading="chat.loading.value"
           size="small"
           @click="handleSend"
@@ -139,6 +201,23 @@ watch(() => props.node?.id, () => {
         </el-button>
       </div>
     </div>
+
+    <!-- History dialog -->
+    <el-dialog v-model="chat.historyOpen.value" title="历史对话" width="380px" append-to-body :z-index="3000">
+      <div v-loading="chat.historyLoading.value" class="chat-history-list">
+        <div v-if="chat.historyGroups.value.length === 0 && !chat.historyLoading.value" class="empty small">暂无历史对话。</div>
+        <button
+          v-for="group in chat.historyGroups.value"
+          :key="group.conversationId"
+          type="button"
+          class="chat-history-item"
+          @click="chat.restoreConversation(group)"
+        >
+          <span>{{ group.title }}</span>
+          <small>{{ group.count }} 条消息 · {{ group.updatedAt ? new Date(group.updatedAt).toLocaleString() : '' }}</small>
+        </button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -204,20 +283,9 @@ watch(() => props.node?.id, () => {
   flex-shrink: 0;
 }
 
-.chat-mode-tabs {
-  display: flex;
-  gap: 4px;
-}
-.chat-mode-tab {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+.chat-mode-select {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Context bar */
@@ -323,5 +391,54 @@ watch(() => props.node?.id, () => {
 }
 .chat-input-area .el-textarea {
   flex: 1;
+}
+
+/* History dialog */
+.chat-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.chat-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.chat-history-item:hover {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+}
+.chat-history-item span {
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-history-item small {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.empty.small {
+  text-align: center;
+  color: var(--el-text-color-placeholder);
+  padding: 12px;
+  font-size: 13px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
 }
 </style>

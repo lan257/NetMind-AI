@@ -31,6 +31,8 @@ public sealed class AiCleanService : IAiCleanService
     private readonly string _contextCompressionPromptTemplate;
     private readonly string _nodeChatPromptTemplate;
     private readonly string _nodeChatCompressionPromptTemplate;
+    private readonly string _appHelpPromptTemplate;
+    private readonly string _appManualText;
 
     public AiCleanService(AiCleanOptions options, HttpClient httpClient, IAppLogger logger,
         INodeRepository nodeRepository, INodeRelationRepository relationRepository)
@@ -47,6 +49,8 @@ public sealed class AiCleanService : IAiCleanService
         _contextCompressionPromptTemplate = JoinPromptLines(options.Prompt.ContextCompressionPromptTemplateLines, "AiClean:Prompt:ContextCompressionPromptTemplateLines");
         _nodeChatPromptTemplate = JoinPromptLines(options.Prompt.NodeChatPromptTemplateLines, "AiClean:Prompt:NodeChatPromptTemplateLines");
         _nodeChatCompressionPromptTemplate = JoinPromptLines(options.Prompt.NodeChatCompressionPromptTemplateLines, "AiClean:Prompt:NodeChatCompressionPromptTemplateLines");
+        _appHelpPromptTemplate = JoinPromptLines(options.Prompt.AppHelpPromptTemplateLines, "AiClean:Prompt:AppHelpPromptTemplateLines");
+        _appManualText = JoinPromptLines(options.Prompt.AppManualLines, "AiClean:Prompt:AppManualLines");
     }
 
     public IReadOnlyList<AiModelOptionDto> ListModels()
@@ -272,6 +276,103 @@ public sealed class AiCleanService : IAiCleanService
         }
 
         throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    public async Task<AiAppHelpResult> ChatForAppHelpAsync(AiAppHelpRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new ArgumentException("请输入对话内容。", nameof(request));
+        }
+
+        var maxLength = Math.Max(request.MaxContextLength, 1024);
+        var contextText = request.Context?.Trim() ?? string.Empty;
+        var usagePercent = maxLength <= 0 ? 0 : (double)contextText.Length / maxLength * 100;
+
+        string contextStatus;
+        if (usagePercent > 100)
+        {
+            throw new InvalidOperationException($"当前上下文长度为 {contextText.Length} 字符，超过上限 {maxLength} 字符（{usagePercent:F0}%），请删减上下文或分多次发送。");
+        }
+
+        string prompt;
+        bool needCompression;
+        int compressionTargetLength = 0;
+        int maxReplyLength = maxLength;
+
+        if (usagePercent > 80)
+        {
+            contextStatus = "critical";
+            needCompression = false;
+            contextText = string.Empty;
+            prompt = BuildAppHelpPrompt(contextText, request.Message, false, 0, maxReplyLength);
+        }
+        else if (usagePercent > 60)
+        {
+            contextStatus = "warning";
+            needCompression = true;
+            compressionTargetLength = (int)(maxLength * 0.4);
+            maxReplyLength = (int)(maxLength * 0.4);
+            prompt = BuildAppHelpPrompt(contextText, request.Message, true, compressionTargetLength, maxReplyLength);
+        }
+        else
+        {
+            contextStatus = "comfortable";
+            needCompression = false;
+            prompt = BuildAppHelpPrompt(contextText, request.Message, false, 0, maxReplyLength);
+        }
+
+        var candidates = SelectModels(request.ModelId);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var content = await CallModelForTextAsync(candidate, prompt, request.ApiKey);
+                var (reply, compressedContext) = ParseNodeChatResponse(content);
+
+                return new AiAppHelpResult
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    Reply = reply,
+                    CompressedContext = compressedContext,
+                    WasContextCompressed = needCompression && !string.IsNullOrWhiteSpace(compressedContext),
+                    ContextUsagePercent = usagePercent,
+                    ContextStatus = contextStatus,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    private string BuildAppHelpPrompt(string contextText, string message,
+        bool needCompression, int compressionTargetLength, int maxReplyLength)
+    {
+        var prompt = _appHelpPromptTemplate
+            .Replace("{{manual}}", _appManualText, StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(contextText) ? "（无历史上下文）" : contextText, StringComparison.Ordinal)
+            .Replace("{{message}}", message.Trim(), StringComparison.Ordinal);
+
+        if (needCompression)
+        {
+            prompt = prompt
+                .Replace("（空）",
+                    $"在此输出压缩后的对话上下文。压缩目标不超过 {compressionTargetLength} 个字符（约占上限 40%）。" +
+                    "正文不得超过 " + maxReplyLength + " 个字符（约占上限 40%）。" +
+                    "压缩规则：保留关键信息（事实、决策、约束、术语、未解决问题），删除重复、寒暄和无关细节。不编造新内容。",
+                    StringComparison.Ordinal);
+        }
+
+        return prompt;
     }
 
     private async Task<string> BuildNodeContextAsync(NetMind.Models.Entities.NodeEntity node)
