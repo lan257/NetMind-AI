@@ -7,6 +7,22 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function isTableRow(line) {
+  const t = line.trim();
+  return t.startsWith('|') && t.endsWith('|');
+}
+
+function parseTableRow(line) {
+  return line.trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map(c => c.trim());
+}
+
+function renderTableCell(cell, tag) {
+  return `<${tag}>${renderInline(cell)}</${tag}>`;
+}
+
 function renderInline(value) {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -22,7 +38,9 @@ export function renderMarkdown(value) {
   let paragraph = [];
   let listItems = [];
   let codeLines = [];
+  let tableRows = [];
   let inCode = false;
+  let inTable = false;
 
   const flushParagraph = () => {
     if (paragraph.length === 0) {
@@ -48,11 +66,33 @@ export function renderMarkdown(value) {
     codeLines = [];
   };
 
+  const flushTable = () => {
+    if (tableRows.length < 2) {
+      tableRows.forEach(row => paragraph.push(row));
+      tableRows = [];
+      flushParagraph();
+      return;
+    }
+    const headers = parseTableRow(tableRows[0]);
+    const bodyRows = tableRows.slice(2);
+    const thead = `<thead><tr>${headers.map(h => renderTableCell(h, 'th')).join('')}</tr></thead>`;
+    const tbody = bodyRows.length > 0
+      ? `<tbody>${bodyRows.map(row => {
+          const cells = parseTableRow(row);
+          return `<tr>${headers.map((_, i) => renderTableCell(cells[i] ?? '', 'td')).join('')}</tr>`;
+        }).join('')}</tbody>`
+      : '';
+    html.push(`<table>${thead}${tbody}</table>`);
+    tableRows = [];
+  };
+
   lines.forEach((line) => {
     if (line.trim().startsWith('```')) {
       if (inCode) {
         flushCode();
       } else {
+        if (inTable) flushTable();
+        inTable = false;
         flushParagraph();
         flushList();
       }
@@ -66,9 +106,28 @@ export function renderMarkdown(value) {
     }
 
     if (!line.trim()) {
+      if (inTable) {
+        flushTable();
+        inTable = false;
+      }
       flushParagraph();
       flushList();
       return;
+    }
+
+    if (isTableRow(line)) {
+      if (!inTable) {
+        flushParagraph();
+        flushList();
+        inTable = true;
+      }
+      tableRows.push(line);
+      return;
+    }
+
+    if (inTable) {
+      flushTable();
+      inTable = false;
     }
 
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
@@ -92,6 +151,9 @@ export function renderMarkdown(value) {
 
   if (inCode) {
     flushCode();
+  }
+  if (inTable) {
+    flushTable();
   }
   flushParagraph();
   flushList();

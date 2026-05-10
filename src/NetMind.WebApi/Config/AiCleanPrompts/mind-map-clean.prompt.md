@@ -58,7 +58,7 @@
 18. parentClientId、sourceClientId、targetClientId 必须引用已存在的节点。
 19. orderNo 从 1 开始，并在同级节点内按逻辑顺序排列。
 20. weight 必须大于或等于 0。
-21. 只返回 JSON，不要 Markdown，不要解释。
+21. 只返回 JSON，节点正文允许包含 Markdown 格式，不要解释。
 
 用户文本：
 {{naturalLanguage}}

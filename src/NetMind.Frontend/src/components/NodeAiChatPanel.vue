@@ -2,9 +2,11 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { ChatDotRound, Clock, Plus, ArrowRight } from '@element-plus/icons-vue';
 import { useNodeAiChat } from '../composables/useNodeAiChat';
+import { renderMarkdown } from '../composables/useMarkdown';
 
 const props = defineProps({
   node: { type: Object, default: null },
+  currentMapId: { type: [Number, String], default: null },
   aiModels: { type: Array, default: () => [] },
   selectedModelId: { type: String, default: '' }
 });
@@ -16,7 +18,7 @@ const collapsed = ref(true);
 const chatModes = [
   { value: 'node', label: '节点问答（聊天）', icon: ChatDotRound, available: true },
   { value: 'node-agent', label: '节点问答（Agent）', icon: ChatDotRound, available: false },
-  { value: 'map', label: '全图问答（聊天）', icon: ChatDotRound, available: false },
+  { value: 'map', label: '全图问答（聊天）', icon: ChatDotRound, available: true },
   { value: 'map-agent', label: '全图问答（Agent）', icon: ChatDotRound, available: false },
   { value: 'global', label: '全局问答', icon: ChatDotRound, available: false },
   { value: 'app-help', label: '应用帮助', icon: ChatDotRound, available: true }
@@ -56,8 +58,10 @@ function selectMode(mode) {
 async function handleSend() {
   if (!chat.inputText.value.trim() || chat.loading.value) return;
 
-  // App-help mode doesn't need a selected node
-  if (chat.chatMode.value !== 'app-help' && !props.node) return;
+  // App-help and map modes don't need a selected node
+  if (chat.chatMode.value !== 'app-help' && chat.chatMode.value !== 'map' && !props.node) return;
+  // Map mode needs currentMapId
+  if (chat.chatMode.value === 'map' && !props.currentMapId) return;
 
   // Get API key from localStorage custom models or from selected model
   const modelId = props.selectedModelId;
@@ -75,7 +79,7 @@ async function handleSend() {
     }
   } catch { /* ignore */ }
 
-  await chat.sendMessage(props.node, modelId, apiKey);
+  await chat.sendMessage(props.node, modelId, apiKey, props.currentMapId);
   nextTick(() => scrollToBottom());
 }
 
@@ -158,6 +162,12 @@ const currentModeLabel = computed(() => {
             <p class="chat-empty-hint">针对当前选中节点进行问答或内容完善</p>
             <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
           </template>
+          <!-- Map chat mode -->
+          <template v-else-if="chat.chatMode.value === 'map'">
+            <p>AI 全图问答助手</p>
+            <p class="chat-empty-hint">针对当前思维导图的整体结构进行问答和分析</p>
+            <p class="chat-empty-hint" v-if="!currentMapId">请先在侧边栏选择一个思维导图</p>
+          </template>
           <!-- App help mode -->
           <template v-else-if="chat.chatMode.value === 'app-help'">
             <p>应用帮助助手</p>
@@ -171,7 +181,7 @@ const currentModeLabel = computed(() => {
         </div>
         <div v-for="(msg, idx) in chat.messages.value" :key="idx" :class="['chat-message', `msg-${msg.role}`]">
           <div class="msg-role">{{ msg.role === 'user' ? '你' : msg.role === 'assistant' ? 'AI' : '系统' }}</div>
-          <div class="msg-content" v-text="msg.content"></div>
+          <div class="msg-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
         </div>
         <div v-if="chat.loading.value" class="chat-message msg-assistant">
           <div class="msg-role">AI</div>
@@ -186,13 +196,13 @@ const currentModeLabel = computed(() => {
           type="textarea"
           :rows="2"
           placeholder="输入问题或需求…"
-          :disabled="(chat.chatMode.value !== 'app-help' && !node) || chat.loading.value"
+          :disabled="(chat.chatMode.value !== 'app-help' && chat.chatMode.value !== 'map' && !node) || (chat.chatMode.value === 'map' && !currentMapId) || chat.loading.value"
           @keyup="handleKeyup"
         />
         <el-button
           type="primary"
           :icon="ChatDotRound"
-          :disabled="!chat.inputText.value.trim() || chat.loading.value || (chat.chatMode.value !== 'app-help' && !node)"
+          :disabled="!chat.inputText.value.trim() || chat.loading.value || (chat.chatMode.value !== 'app-help' && chat.chatMode.value !== 'map' && !node) || (chat.chatMode.value === 'map' && !currentMapId)"
           :loading="chat.loading.value"
           size="small"
           @click="handleSend"
@@ -205,7 +215,8 @@ const currentModeLabel = computed(() => {
     <!-- History dialog -->
     <el-dialog v-model="chat.historyOpen.value" title="历史对话" width="380px" append-to-body :z-index="3000">
       <div v-loading="chat.historyLoading.value" class="chat-history-list">
-        <div v-if="chat.historyGroups.value.length === 0 && !chat.historyLoading.value" class="empty small">暂无历史对话。</div>
+        <div v-if="chat.historyError.value" class="history-error">{{ chat.historyError.value }}</div>
+        <div v-else-if="chat.historyGroups.value.length === 0 && !chat.historyLoading.value" class="empty small">暂无历史对话。</div>
         <button
           v-for="group in chat.historyGroups.value"
           :key="group.conversationId"
@@ -440,5 +451,15 @@ const currentModeLabel = computed(() => {
   font-size: 13px;
   border: 1px dashed var(--el-border-color);
   border-radius: 6px;
+}
+
+.history-error {
+  text-align: center;
+  color: var(--el-color-danger);
+  padding: 12px;
+  font-size: 13px;
+  background: var(--el-color-danger-light-9);
+  border-radius: 6px;
+  line-height: 1.5;
 }
 </style>

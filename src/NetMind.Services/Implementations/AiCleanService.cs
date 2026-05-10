@@ -31,6 +31,7 @@ public sealed class AiCleanService : IAiCleanService
     private readonly string _contextCompressionPromptTemplate;
     private readonly string _nodeChatPromptTemplate;
     private readonly string _nodeChatCompressionPromptTemplate;
+    private readonly string _mapChatPromptTemplate;
     private readonly string _appHelpPromptTemplate;
     private readonly string _appManualText;
 
@@ -49,6 +50,7 @@ public sealed class AiCleanService : IAiCleanService
         _contextCompressionPromptTemplate = JoinPromptLines(options.Prompt.ContextCompressionPromptTemplateLines, "AiClean:Prompt:ContextCompressionPromptTemplateLines");
         _nodeChatPromptTemplate = JoinPromptLines(options.Prompt.NodeChatPromptTemplateLines, "AiClean:Prompt:NodeChatPromptTemplateLines");
         _nodeChatCompressionPromptTemplate = JoinPromptLines(options.Prompt.NodeChatCompressionPromptTemplateLines, "AiClean:Prompt:NodeChatCompressionPromptTemplateLines");
+        _mapChatPromptTemplate = JoinPromptLines(options.Prompt.MapChatPromptTemplateLines, "AiClean:Prompt:MapChatPromptTemplateLines");
         _appHelpPromptTemplate = JoinPromptLines(options.Prompt.AppHelpPromptTemplateLines, "AiClean:Prompt:AppHelpPromptTemplateLines");
         _appManualText = JoinPromptLines(options.Prompt.AppManualLines, "AiClean:Prompt:AppManualLines");
     }
@@ -352,6 +354,165 @@ public sealed class AiCleanService : IAiCleanService
         }
 
         throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    public async Task<AiMapChatResult> ChatWithMapAsync(AiMapChatRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new ArgumentException("请输入对话内容。", nameof(request));
+        }
+
+        if (request.MapId <= 0)
+        {
+            throw new ArgumentException("请选择有效的思维导图。", nameof(request));
+        }
+
+        var mapContext = await BuildMapContextAsync(request.MapId);
+
+        var maxLength = Math.Max(request.MaxContextLength, 1024);
+        var contextText = request.Context?.Trim() ?? string.Empty;
+        var usagePercent = maxLength <= 0 ? 0 : (double)contextText.Length / maxLength * 100;
+
+        string contextStatus;
+        if (usagePercent > 100)
+        {
+            throw new InvalidOperationException($"当前上下文长度为 {contextText.Length} 字符，超过上限 {maxLength} 字符（{usagePercent:F0}%），请删减上下文或分多次发送。");
+        }
+
+        string prompt;
+        bool needCompression;
+
+        if (usagePercent > 80)
+        {
+            contextStatus = "critical";
+            needCompression = false;
+            contextText = string.Empty;
+            prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
+        }
+        else if (usagePercent > 60)
+        {
+            contextStatus = "warning";
+            needCompression = true;
+            contextText = string.Empty; // drop history, ask AI to compress
+            prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
+        }
+        else
+        {
+            contextStatus = "comfortable";
+            needCompression = false;
+            prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
+        }
+
+        var candidates = SelectModels(request.ModelId);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var content = await CallModelForTextAsync(candidate, prompt, request.ApiKey);
+                var (reply, compressedContext) = ParseNodeChatResponse(content);
+
+                return new AiMapChatResult
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    Reply = reply,
+                    CompressedContext = compressedContext,
+                    WasContextCompressed = needCompression && !string.IsNullOrWhiteSpace(compressedContext),
+                    ContextUsagePercent = usagePercent,
+                    ContextStatus = contextStatus,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    private async Task<string> BuildMapContextAsync(long mapId)
+    {
+        var nodes = await _nodeRepository.ListByMapAsync(mapId);
+        var relations = await _relationRepository.ListByMapAsync(mapId);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"导图节点总数: {nodes.Count}");
+        sb.AppendLine($"关联关系总数: {relations.Count}");
+        sb.AppendLine();
+
+        // Build a parent->children index for tree structure
+        var childrenByParent = new Dictionary<long, List<string>>();
+        var rootNodes = new List<string>();
+        foreach (var node in nodes)
+        {
+            var titleLine = $"#{node.Id} {node.Title}";
+            if (node.ParentId.HasValue)
+            {
+                var key = node.ParentId.Value;
+                if (!childrenByParent.ContainsKey(key))
+                {
+                    childrenByParent[key] = new List<string>();
+                }
+                childrenByParent[key].Add(titleLine);
+            }
+            else
+            {
+                rootNodes.Add(titleLine);
+            }
+        }
+
+        // Output tree structure starting from root nodes (ParentId == null)
+        sb.AppendLine("=== 节点树结构 ===");
+        foreach (var root in rootNodes)
+        {
+            sb.AppendLine(root);
+            // Find children recursively (simple depth-first)
+            var rootIdMatch = System.Text.RegularExpressions.Regex.Match(root, @"^#(\d+)");
+            if (rootIdMatch.Success && long.TryParse(rootIdMatch.Groups[1].Value, out var rootId))
+            {
+                WriteSubtree(sb, childrenByParent, rootId, "  ");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("=== 关联关系列表 ===");
+        var nodeTitleById = nodes.ToDictionary(n => n.Id, n => n.Title);
+        foreach (var rel in relations)
+        {
+            var srcTitle = nodeTitleById.GetValueOrDefault(rel.SourceId, $"节点#{rel.SourceId}");
+            var tgtTitle = nodeTitleById.GetValueOrDefault(rel.TargetId, $"节点#{rel.TargetId}");
+            sb.AppendLine($"  #{rel.SourceId} {srcTitle} --[{rel.RelationType}]--> #{rel.TargetId} {tgtTitle}");
+        }
+
+        return sb.ToString();
+    }
+
+    private static void WriteSubtree(StringBuilder sb, Dictionary<long, List<string>> childrenByParent, long parentId, string indent)
+    {
+        var children = childrenByParent.GetValueOrDefault(parentId, new List<string>());
+        foreach (var child in children)
+        {
+            sb.AppendLine($"{indent}{child}");
+            var childIdMatch = System.Text.RegularExpressions.Regex.Match(child, @"^#(\d+)");
+            if (childIdMatch.Success && long.TryParse(childIdMatch.Groups[1].Value, out var childId))
+            {
+                WriteSubtree(sb, childrenByParent, childId, indent + "  ");
+            }
+        }
+    }
+
+    private string BuildMapChatPrompt(string mapContext, string contextText, string message)
+    {
+        return _mapChatPromptTemplate
+            .Replace("{{mapContext}}", mapContext, StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(contextText) ? "（无历史上下文）" : contextText, StringComparison.Ordinal)
+            .Replace("{{message}}", message.Trim(), StringComparison.Ordinal);
     }
 
     private string BuildAppHelpPrompt(string contextText, string message,

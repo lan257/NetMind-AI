@@ -148,7 +148,7 @@ function jumpToMap() {
 
 <template>
   <div class="knowledge-card-wrapper">
-    <NodeAiChatPanel :node="currentNode" :ai-models="aiModels" :selected-model-id="selectedModelId" />
+    <NodeAiChatPanel :node="currentNode" :current-map-id="currentMapId" :ai-models="aiModels" :selected-model-id="selectedModelId" />
     <aside class="knowledge-card" v-loading="cardLoading">
 
     <!-- === DISPLAY MODE === -->

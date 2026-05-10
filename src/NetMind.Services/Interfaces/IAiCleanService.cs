@@ -14,5 +14,7 @@ public interface IAiCleanService
 
     Task<AiNodeChatResult> ChatWithNodeAsync(AiNodeChatRequest request);
 
+    Task<AiMapChatResult> ChatWithMapAsync(AiMapChatRequest request);
+
     Task<AiAppHelpResult> ChatForAppHelpAsync(AiAppHelpRequest request);
 }

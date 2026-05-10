@@ -605,6 +605,30 @@ input[type="file"] {
   color: #1f7ab8;
 }
 
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.markdown-body thead th {
+  padding: 6px 10px;
+  border: 1px solid #d5dee7;
+  background: #f0f4f8;
+  text-align: left;
+  font-weight: 600;
+}
+
+.markdown-body tbody td {
+  padding: 5px 10px;
+  border: 1px solid #dce5ee;
+}
+
+.markdown-body tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
 .chat-dialog.el-dialog,
 .chat-dialog .el-dialog {
   max-height: calc(100vh - 32px);

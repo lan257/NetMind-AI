@@ -33,6 +33,7 @@ export function useNodeAiChat(initialMode = 'node') {
 
   function conversationPrefix() {
     if (chatMode.value === 'app-help') return 'help';
+    if (chatMode.value === 'map') return 'map';
     return 'node';
   }
   const conversationId = ref(createConversationId(conversationPrefix()));
@@ -41,6 +42,7 @@ export function useNodeAiChat(initialMode = 'node') {
   const historyOpen = ref(false);
   const historyLoading = ref(false);
   const historyGroups = ref([]);
+  const historyError = ref('');
 
   const contextText = computed(() => {
     return messages.value
@@ -72,12 +74,14 @@ export function useNodeAiChat(initialMode = 'node') {
     maxContextLength.value = loadMaxContextLength();
   }
 
-  async function sendMessage(node, modelId, apiKey) {
+  async function sendMessage(node, modelId, apiKey, mapId) {
     const text = inputText.value.trim();
     if (!text) return;
 
-    // App-help mode doesn't require a node
-    if (chatMode.value !== 'app-help' && !node) return;
+    // App-help mode and map mode don't require a node
+    if (chatMode.value !== 'app-help' && chatMode.value !== 'map' && !node) return;
+    // Map mode requires a mapId
+    if (chatMode.value === 'map' && !mapId) return;
 
     inputText.value = '';
     messages.value.push({ role: 'user', content: text });
@@ -91,6 +95,17 @@ export function useNodeAiChat(initialMode = 'node') {
       if (chatMode.value === 'app-help') {
         endpoint = '/api/ai/app-help-chat';
         body = {
+          message: text,
+          context: getContextText(),
+          conversationId: conversationId.value,
+          modelId: modelId || null,
+          apiKey: apiKey || null,
+          maxContextLength: maxContextLength.value
+        };
+      } else if (chatMode.value === 'map') {
+        endpoint = '/api/ai/map-chat';
+        body = {
+          mapId: Number(mapId),
           message: text,
           context: getContextText(),
           conversationId: conversationId.value,
@@ -154,14 +169,17 @@ export function useNodeAiChat(initialMode = 'node') {
   async function loadHistory() {
     historyOpen.value = true;
     historyLoading.value = true;
+    historyError.value = '';
     try {
       const records = await api('/api/ai-conversation-records');
       const prefix = conversationPrefix();
+      console.log(`[history] 总记录数: ${records.length}, 当前模式: ${chatMode.value}, 前缀: ${prefix}-`);
 
       // Filter by conversationId prefix for current mode
       const filtered = records.filter(r =>
         r.conversationId && r.conversationId.startsWith(prefix + '-')
       );
+      console.log(`[history] 过滤后记录数: ${filtered.length}`);
 
       const groups = new Map();
       filtered.forEach((record) => {
@@ -187,8 +205,13 @@ export function useNodeAiChat(initialMode = 'node') {
           };
         })
         .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+      if (historyGroups.value.length === 0 && records.length === 0) {
+        historyError.value = '暂无历史对话记录。请确认数据库已启动且已发送过对话消息。';
+      }
     } catch (err) {
       console.error('Failed to load conversation history:', err);
+      historyError.value = '加载失败：' + (err.message || '未知错误，请确认后端服务和数据库是否正常运行');
     } finally {
       historyLoading.value = false;
     }
@@ -223,6 +246,7 @@ export function useNodeAiChat(initialMode = 'node') {
     historyOpen,
     historyLoading,
     historyGroups,
+    historyError,
     sendMessage,
     clearChat,
     startNewConversation,

@@ -84,6 +84,40 @@ public sealed class AiController : ControllerBase
         }
     }
 
+    [HttpPost("map-chat")]
+    public async Task<ActionResult<ApiResult<AiMapChatResult>>> ChatWithMapAsync(AiMapChatRequest request)
+    {
+        try
+        {
+            var result = await _aiCleanService.ChatWithMapAsync(request);
+            if (!string.IsNullOrWhiteSpace(request.ConversationId))
+            {
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "user",
+                    Content = request.Message,
+                    ModelId = request.ModelId
+                });
+                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+                {
+                    ConversationId = request.ConversationId,
+                    Role = "assistant",
+                    Content = result.Reply,
+                    ModelId = result.SelectedModel.Id,
+                    Prompt = result.Prompt,
+                    WasContextCompressed = result.WasContextCompressed
+                });
+            }
+
+            return ApiResult<AiMapChatResult>.Ok(result);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            return BadRequest(ApiResult<AiMapChatResult>.Fail(ex.Message));
+        }
+    }
+
     [HttpPost("app-help-chat")]
     public async Task<ActionResult<ApiResult<AiAppHelpResult>>> ChatForAppHelpAsync(AiAppHelpRequest request)
     {

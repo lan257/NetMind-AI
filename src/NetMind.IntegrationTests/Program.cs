@@ -50,6 +50,7 @@ var aiCleanService = new AiCleanService(
             },
             NodeChatPromptTemplateLines = new[] { "Node chat prompt." },
             NodeChatCompressionPromptTemplateLines = new[] { "Node chat compression prompt." },
+            MapChatPromptTemplateLines = new[] { "Map chat prompt." },
             AppHelpPromptTemplateLines = new[] { "App help prompt." },
             AppManualLines = new[] { "App manual content." }
         },
