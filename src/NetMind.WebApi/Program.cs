@@ -15,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
     string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
 {
-    builder.WebHost.UseUrls("http://0.0.0.0:5119", "http://[::]:5119");
+    builder.WebHost.UseUrls("http://0.0.0.0:5119");
 }
 
 builder.Services.AddControllers();
