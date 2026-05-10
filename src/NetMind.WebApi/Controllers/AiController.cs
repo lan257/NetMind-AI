@@ -50,6 +50,19 @@ public sealed class AiController : ControllerBase
         }
     }
 
+    [HttpPost("node-chat")]
+    public async Task<ActionResult<ApiResult<AiNodeChatResult>>> ChatWithNodeAsync(AiNodeChatRequest request)
+    {
+        try
+        {
+            return ApiResult<AiNodeChatResult>.Ok(await _aiCleanService.ChatWithNodeAsync(request));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            return BadRequest(ApiResult<AiNodeChatResult>.Fail(ex.Message));
+        }
+    }
+
     [HttpPost("context-chat")]
     public async Task<ActionResult<ApiResult<AiContextChatResultDto>>> ChatWithContextAsync(AiContextChatRequest request)
     {

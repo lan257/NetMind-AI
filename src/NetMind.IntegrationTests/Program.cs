@@ -1,8 +1,14 @@
 using NetMind.Common.Logging;
 using NetMind.Models.Dtos;
+using NetMind.Models.Entities;
 using NetMind.Repository.Implementations;
+using NetMind.Repository.Interfaces;
 using NetMind.Services.Configurations;
 using NetMind.Services.Implementations;
+
+// Stub repositories for AI configuration tests (no database needed)
+var stubNodeRepo = new StubNodeRepository();
+var stubRelationRepo = new StubNodeRelationRepository();
 
 var aiCleanService = new AiCleanService(
     new AiCleanOptions
@@ -41,7 +47,9 @@ var aiCleanService = new AiCleanService(
             {
                 "Compress context:",
                 "{{context}}"
-            }
+            },
+            NodeChatPromptTemplateLines = new[] { "Node chat prompt." },
+            NodeChatCompressionPromptTemplateLines = new[] { "Node chat compression prompt." }
         },
         Models = new[]
         {
@@ -68,7 +76,9 @@ var aiCleanService = new AiCleanService(
         }
     },
     new HttpClient(),
-    NullAppLogger.Instance);
+    NullAppLogger.Instance,
+    stubNodeRepo,
+    stubRelationRepo);
 
 var aiModels = aiCleanService.ListModels();
 Assert(aiModels.Count == 2, "AI model list should be read from configuration.");
@@ -121,4 +131,28 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+internal sealed class StubNodeRepository : INodeRepository
+{
+    public Task<IReadOnlyList<NodeEntity>> ListByMapAsync(long mapId) => Task.FromResult<IReadOnlyList<NodeEntity>>(Array.Empty<NodeEntity>());
+    public Task<IReadOnlyList<NodeEntity>> SearchAsync(long? mapId, string keyword, int limit) => Task.FromResult<IReadOnlyList<NodeEntity>>(Array.Empty<NodeEntity>());
+    public Task<NodeEntity?> GetAsync(long id) => Task.FromResult<NodeEntity?>(null);
+    public Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId) => Task.FromResult(false);
+    public Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY) => Task.FromResult(new NodeEntity());
+    public Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY) => Task.FromResult<NodeEntity?>(null);
+    public Task<int> DeleteSelfAsync(long id) => Task.FromResult(0);
+    public Task<int> DeleteSubtreeAsync(long id) => Task.FromResult(0);
+}
+
+internal sealed class StubNodeRelationRepository : INodeRelationRepository
+{
+    public Task<IReadOnlyList<NodeRelationEntity>> ListByMapAsync(long mapId) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
+    public Task<IReadOnlyList<NodeRelationEntity>> ListBySourceAsync(long sourceId) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
+    public Task<IReadOnlyList<NodeRelationEntity>> ListByNodeAsync(long nodeId) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
+    public Task<NodeRelationEntity?> GetAsync(long id) => Task.FromResult<NodeRelationEntity?>(null);
+    public Task<NodeRelationEntity> CreateAsync(long sourceId, long targetId, string relationType, double weight, long mapId) => Task.FromResult(new NodeRelationEntity());
+    public Task<NodeRelationEntity?> UpdateAsync(long id, string relationType, double weight) => Task.FromResult<NodeRelationEntity?>(null);
+    public Task<int> DeleteAsync(long id) => Task.FromResult(0);
+    public Task<int> DeleteByNodeAsync(long nodeId) => Task.FromResult(0);
 }

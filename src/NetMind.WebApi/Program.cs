@@ -216,7 +216,9 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
             UserPromptTemplateLines = ReadPromptLines(promptSection, "User", "UserPromptTemplateLines", contentRootPath),
             RequirementPromptTemplateLines = ReadPromptLines(promptSection, "Requirement", "RequirementPromptTemplateLines", contentRootPath),
             ContextChatPromptTemplateLines = ReadPromptLines(promptSection, "ContextChat", "ContextChatPromptTemplateLines", contentRootPath),
-            ContextCompressionPromptTemplateLines = ReadPromptLines(promptSection, "ContextCompression", "ContextCompressionPromptTemplateLines", contentRootPath)
+            ContextCompressionPromptTemplateLines = ReadPromptLines(promptSection, "ContextCompression", "ContextCompressionPromptTemplateLines", contentRootPath),
+            NodeChatPromptTemplateLines = ReadPromptLines(promptSection, "NodeChat", "NodeChatPromptTemplateLines", contentRootPath),
+            NodeChatCompressionPromptTemplateLines = ReadPromptLines(promptSection, "NodeChatCompression", "NodeChatCompressionPromptTemplateLines", contentRootPath)
         }
     };
 }

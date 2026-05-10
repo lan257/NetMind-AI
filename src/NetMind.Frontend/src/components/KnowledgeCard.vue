@@ -3,6 +3,7 @@ import { ref, nextTick, watch } from 'vue';
 import { FullScreen, Location, Link, ArrowLeft } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 import { api } from '../services/api';
+import NodeAiChatPanel from './NodeAiChatPanel.vue';
 import RelationGraphCanvas from './RelationGraphCanvas.vue';
 
 const props = defineProps({
@@ -17,7 +18,9 @@ const props = defineProps({
   selectedNodeRelations: { type: Array, default: () => [] },
   nodeTitleById: { type: Object, default: () => new Map() },
   loading: { type: Boolean, default: false },
-  searchNodes: { type: Function, default: null }
+  searchNodes: { type: Function, default: null },
+  aiModels: { type: Array, default: () => [] },
+  selectedModelId: { type: String, default: '' }
 });
 
 const emit = defineEmits(['preview-node', 'jump-to-node', 'save-node', 'create-relation', 'delete-relation']);
@@ -144,7 +147,9 @@ function jumpToMap() {
 </script>
 
 <template>
-  <aside class="knowledge-card" v-loading="cardLoading">
+  <div class="knowledge-card-wrapper">
+    <NodeAiChatPanel :node="currentNode" :ai-models="aiModels" :selected-model-id="selectedModelId" />
+    <aside class="knowledge-card" v-loading="cardLoading">
 
     <!-- === DISPLAY MODE === -->
     <template v-if="workMode === 'display'">
@@ -209,6 +214,7 @@ function jumpToMap() {
       </template>
     </template>
   </aside>
+  </div>
 
   <!-- [[ reference dialog -->
   <el-dialog v-model="showRefDialog" title="插入节点引用 (全局)" width="480px" append-to-body @opened="onRefDialogOpened">
@@ -239,7 +245,8 @@ function jumpToMap() {
 </template>
 
 <style scoped>
-.knowledge-card { display:flex; flex-direction:column; padding:12px; background:#fff; border:1px solid #d8e0e8; border-radius:8px; overflow:hidden; height:calc(100vh - 136px); gap:8px; }
+.knowledge-card-wrapper { position: relative; height: calc(100vh - 136px); }
+.knowledge-card { display:flex; flex-direction:column; padding:12px; background:#fff; border:1px solid #d8e0e8; border-radius:8px; overflow:hidden; height:100%; gap:8px; }
 .section-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0; }
 .section-heading h2 { margin:0; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .section-heading span { font-size:12px; color:var(--el-text-color-secondary); white-space:nowrap; }
