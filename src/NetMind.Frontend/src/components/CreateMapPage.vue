@@ -33,12 +33,9 @@ function selectMap(id) {
           <section class="panel create-card">
             <div class="section-heading">
               <h2>AI 清洗</h2>
-              <span>{{ workspace.aiModels.value.length }} 个模型</span>
+              <span class="current-model-label">模型：{{ workspace.aiModels.value.find(m => m.id === workspace.selectedAiModelId.value)?.name || '未选择' }}</span>
             </div>
             <div class="field-row ai-actions">
-              <el-select v-model="workspace.selectedAiModelId.value" data-testid="ai-model" placeholder="选择模型">
-                <el-option v-for="model in workspace.aiModels.value" :key="model.id" :label="model.name" :value="model.id" />
-              </el-select>
               <el-button :icon="MagicStick" data-testid="ai-clean" :loading="workspace.loading.value" @click="workspace.cleanNaturalLanguage">自然语言清洗</el-button>
               <el-button :icon="ChatDotRound" data-testid="ai-open-chat" @click="workspace.chatOpen.value = true">需求对话</el-button>
             </div>

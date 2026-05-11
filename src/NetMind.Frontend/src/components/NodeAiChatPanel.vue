@@ -6,9 +6,7 @@ import { renderMarkdown } from '../composables/useMarkdown';
 
 const props = defineProps({
   node: { type: Object, default: null },
-  currentMapId: { type: [Number, String], default: null },
-  aiModels: { type: Array, default: () => [] },
-  selectedModelId: { type: String, default: '' }
+  currentMapId: { type: [Number, String], default: null }
 });
 
 const chat = useNodeAiChat();
@@ -63,23 +61,7 @@ async function handleSend() {
   // Map mode needs currentMapId
   if (chat.chatMode.value === 'map' && !props.currentMapId) return;
 
-  // Get API key from localStorage custom models or from selected model
-  const modelId = props.selectedModelId;
-  let apiKey = null;
-
-  // Try to find API key from custom models in localStorage
-  try {
-    const raw = localStorage.getItem('netmind_custom_models');
-    if (raw) {
-      const customModels = JSON.parse(raw);
-      const matched = customModels.find(m => m.id === modelId);
-      if (matched && matched.apiKey) {
-        apiKey = matched.apiKey;
-      }
-    }
-  } catch { /* ignore */ }
-
-  await chat.sendMessage(props.node, modelId, apiKey, props.currentMapId);
+  await chat.sendMessage(props.node, props.currentMapId);
   nextTick(() => scrollToBottom());
 }
 

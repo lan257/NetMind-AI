@@ -82,7 +82,7 @@ public sealed class AiCleanService : IAiCleanService
         }
 
         var prompt = BuildUserPrompt(request.NaturalLanguage);
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -119,7 +119,7 @@ public sealed class AiCleanService : IAiCleanService
             throw new ArgumentException("请输入对话内容。", nameof(request));
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -158,7 +158,7 @@ public sealed class AiCleanService : IAiCleanService
             throw new ArgumentException("请输入需求内容。", nameof(request));
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -248,7 +248,7 @@ public sealed class AiCleanService : IAiCleanService
             prompt = BuildNodeChatPrompt(nodeContext, contextText, request.Message, false, 0, maxReplyLength);
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -324,7 +324,7 @@ public sealed class AiCleanService : IAiCleanService
             prompt = BuildAppHelpPrompt(contextText, request.Message, false, 0, maxReplyLength);
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -404,7 +404,7 @@ public sealed class AiCleanService : IAiCleanService
             prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -636,27 +636,60 @@ public sealed class AiCleanService : IAiCleanService
         return (reply, compressedContext);
     }
 
-    private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId)
+    private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId, string? endpoint = null, string? provider = null, string? apiKey = null)
     {
+        // 前端自定义模型（从设置中配置的模型，通过请求体直传 endpoint/provider/apiKey）
+        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(provider))
+        {
+            return new[]
+            {
+                new AiModelOptions
+                {
+                    Id = requestedModelId ?? "custom",
+                    Name = requestedModelId ?? "自定义模型",
+                    Provider = provider,
+                    Endpoint = endpoint,
+                    Model = provider.Equals("ollama", StringComparison.OrdinalIgnoreCase) ? "custom" : "deepseek-chat",
+                    Enabled = true,
+                    IsDefault = false,
+                    ApiKey = apiKey,
+                    TimeoutSeconds = 60
+                }
+            };
+        }
+
+        // 后端配置模型（appsettings.json）
         if (!string.IsNullOrWhiteSpace(requestedModelId))
         {
             var requested = _options.Models.FirstOrDefault(model =>
                 model.Enabled && string.Equals(model.Id, requestedModelId, StringComparison.Ordinal));
             if (requested is not null)
             {
+                // 如果前端传了 apiKey，用它覆盖环境变量 Key
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    requested = new AiModelOptions
+                    {
+                        Id = requested.Id,
+                        Name = requested.Name,
+                        Provider = requested.Provider,
+                        Endpoint = requested.Endpoint,
+                        Model = requested.Model,
+                        Enabled = true,
+                        IsDefault = requested.IsDefault,
+                        ApiKey = apiKey,
+                        TimeoutSeconds = requested.TimeoutSeconds,
+                        Notes = requested.Notes
+                    };
+                }
+
                 return new[] { requested };
             }
 
-            throw new ArgumentException($"AI 模型 '{requestedModelId}' 未配置或未启用。", nameof(requestedModelId));
+            throw new ArgumentException($"AI 模型 '{requestedModelId}' 未配置或未启用。请在「设置 → AI 大模型配置」中添加模型。", nameof(requestedModelId));
         }
 
-        return _options.Models
-            .Where(model => model.Enabled)
-            .OrderBy(model => model.IsDefault ? 0 : 1)
-            .ThenBy(model => model.Provider.Equals("deepseek", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ThenBy(model => model.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ThenBy(model => model.Id, StringComparer.Ordinal)
-            .ToList();
+        throw new InvalidOperationException("未选择 AI 模型。请在「设置 → AI 大模型配置」中选择默认模型。");
     }
 
     private async Task<string> CallOpenAiCompatibleAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
@@ -678,7 +711,9 @@ public sealed class AiCleanService : IAiCleanService
         var apiKey = apiKeyOverride ?? ResolveApiKey(model);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException($"AI 模型 '{model.Id}' 需要配置 API Key。");
+            throw new InvalidOperationException(
+                $"AI 模型 '{model.Name}' 缺少 API Key。请在「设置 → AI 大模型配置」中为模型配置 API Key，" +
+                $"或设置环境变量 {(string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable) ? "" : model.ApiKeyEnvironmentVariable)}。");
         }
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);

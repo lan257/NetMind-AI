@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { api, downloadUrl } from '../services/api';
+import { getGlobalModelConfig, useGlobalModel } from './useGlobalModel';
 
 function createConversationId() {
   if (window.crypto?.randomUUID) {
@@ -34,6 +35,8 @@ export function useMindMapWorkspace() {
   const chatHistoryGroups = ref([]);
   const loading = ref(false);
   const toast = ref({ type: '', text: '' });
+
+  const { allModels, selectedModelId: globalSelectedId } = useGlobalModel();
 
   const selectedMap = computed(() => maps.value.find((map) => map.id === selectedMapId.value) ?? null);
   const selectedNode = computed(() => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null);
@@ -174,13 +177,24 @@ export function useMindMapWorkspace() {
   }
 
   async function loadAiModels() {
+    // 从全局模型管理器中同步模型列表和选中项
     const data = await run(() => api('/api/ai/models'));
-    if (!data) {
-      return;
+    if (data) {
+      aiModels.value = data;
     }
 
-    aiModels.value = data;
-    selectedAiModelId.value = data.find((model) => model.isDefault)?.id ?? data[0]?.id ?? '';
+    // 合并自定义模型
+    try {
+      const customRaw = localStorage.getItem('netmind_custom_models');
+      const custom = customRaw ? JSON.parse(customRaw) : [];
+      aiModels.value = [...aiModels.value, ...custom];
+    } catch { /* 忽略 */ }
+
+    // 从全局选择中同步
+    selectedAiModelId.value = globalSelectedId.value
+      || aiModels.value.find((model) => model.isDefault)?.id
+      || aiModels.value[0]?.id
+      || '';
   }
 
   async function selectMap(id) {
@@ -427,16 +441,13 @@ export function useMindMapWorkspace() {
   async function jumpToNode({ mapId, nodeId }) {
     if (selectedMapId.value === mapId) {
       selectedNodeId.value = nodeId;
-      // 找到节点并填充表单
       const node = nodes.value.find(n => n.id === nodeId);
       if (node) fillNodeForm(node);
     } else {
-      // 切换导图
       selectedMapId.value = mapId;
       let map = maps.value.find(m => m.id === mapId);
-      
+
       if (!map) {
-        // 如果不在当前列表中，尝试刷新列表
         const data = await run(() => api('/api/mind-maps'));
         if (data) {
           maps.value = data;
@@ -447,7 +458,6 @@ export function useMindMapWorkspace() {
       if (map) {
         mapTitle.value = map.title;
         await refreshMapData(mapId, { keepNodeId: nodeId, message: `已切换至导图：${map.title}` });
-        // 数据刷新后填充表单
         const node = nodes.value.find(n => n.id === nodeId);
         if (node) fillNodeForm(node);
       } else {
@@ -552,6 +562,12 @@ export function useMindMapWorkspace() {
       return;
     }
 
+    const modelConfig = getGlobalModelConfig();
+    if (!modelConfig.modelId) {
+      showToast('error', '未选择 AI 模型。请在「设置 → 全局默认 AI 模型」中选择。');
+      return;
+    }
+
     transferText.value = '';
     aiStatus.value = 'AI 正在清洗文本...';
     const result = await run(
@@ -559,7 +575,10 @@ export function useMindMapWorkspace() {
         method: 'POST',
         body: JSON.stringify({
           naturalLanguage,
-          modelId: selectedAiModelId.value || null
+          modelId: modelConfig.modelId,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null
         })
       }),
       'AI 结构体已生成'
@@ -586,6 +605,8 @@ export function useMindMapWorkspace() {
       return;
     }
 
+    const modelConfig = getGlobalModelConfig();
+
     const previousContext = buildConversationContext();
     chatMessages.value.push({ role: 'user', content: message });
     chatInput.value = '';
@@ -598,7 +619,10 @@ export function useMindMapWorkspace() {
           message,
           conversationId: chatConversationId.value,
           context: previousContext,
-          modelId: selectedAiModelId.value || null
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null
         })
       }),
       'AI 已回复'
@@ -673,6 +697,8 @@ export function useMindMapWorkspace() {
       return;
     }
 
+    const modelConfig = getGlobalModelConfig();
+
     transferText.value = '';
     aiStatus.value = 'AI 正在根据本次对话生成结构体...';
     const result = await run(
@@ -680,7 +706,10 @@ export function useMindMapWorkspace() {
         method: 'POST',
         body: JSON.stringify({
           naturalLanguage: context,
-          modelId: selectedAiModelId.value || null
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null
         })
       }),
       '本次对话已生成结构体'

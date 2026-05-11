@@ -9,6 +9,7 @@ import KnowledgeCard from './components/KnowledgeCard.vue';
 import NodeTreeView from './components/NodeTreeView.vue';
 import SettingsDialog from './components/SettingsDialog.vue';
 import { useMindMapWorkspace } from './composables/useMindMapWorkspace';
+import { loadGlobalModels } from './composables/useGlobalModel';
 
 const workspace = useMindMapWorkspace();
 const page = ref('main');
@@ -42,7 +43,8 @@ function openSettings() {
 }
 
 onMounted(async () => {
-  await Promise.all([workspace.loadMaps(), workspace.loadAiModels()]);
+  await Promise.all([workspace.loadMaps(), loadGlobalModels()]);
+  await workspace.loadAiModels();
 });
 </script>
 
@@ -118,8 +120,6 @@ onMounted(async () => {
           :node-title-by-id="workspace.nodeTitleById.value"
           :loading="workspace.loading.value"
           :search-nodes="workspace.searchNodes"
-          :ai-models="workspace.aiModels.value"
-          :selected-model-id="workspace.selectedAiModelId.value"
           @preview-node="preview"
           @jump-to-node="workspace.jumpToNode"
           @save-node="workspace.updateNode"

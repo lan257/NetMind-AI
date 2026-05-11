@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { api } from '../services/api';
+import { getGlobalModelConfig } from './useGlobalModel';
 
 const STORAGE_KEY_CONTEXT = 'netmind_context_length';
 
@@ -74,11 +75,16 @@ export function useNodeAiChat(initialMode = 'node') {
     maxContextLength.value = loadMaxContextLength();
   }
 
-  async function sendMessage(node, modelId, apiKey, mapId) {
+  /**
+   * 发送消息。模型配置从全局设置中自动读取。
+   * @param {Object|null} node - 当前节点（app-help 和 map 模式可为 null）
+   * @param {number|null} mapId - 当前导图 ID（map 模式必须）
+   */
+  async function sendMessage(node, mapId) {
     const text = inputText.value.trim();
     if (!text) return;
 
-    // App-help mode and map mode don't require a node
+    // App-help and map mode don't require a node
     if (chatMode.value !== 'app-help' && chatMode.value !== 'map' && !node) return;
     // Map mode requires a mapId
     if (chatMode.value === 'map' && !mapId) return;
@@ -89,6 +95,9 @@ export function useNodeAiChat(initialMode = 'node') {
 
     refreshMaxContextLength();
 
+    // 从全局设置读取模型配置
+    const modelConfig = getGlobalModelConfig();
+
     try {
       let endpoint, body;
 
@@ -98,8 +107,10 @@ export function useNodeAiChat(initialMode = 'node') {
           message: text,
           context: getContextText(),
           conversationId: conversationId.value,
-          modelId: modelId || null,
-          apiKey: apiKey || null,
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null,
           maxContextLength: maxContextLength.value
         };
       } else if (chatMode.value === 'map') {
@@ -109,8 +120,10 @@ export function useNodeAiChat(initialMode = 'node') {
           message: text,
           context: getContextText(),
           conversationId: conversationId.value,
-          modelId: modelId || null,
-          apiKey: apiKey || null,
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null,
           maxContextLength: maxContextLength.value
         };
       } else {
@@ -120,8 +133,10 @@ export function useNodeAiChat(initialMode = 'node') {
           message: text,
           context: getContextText(),
           conversationId: conversationId.value,
-          modelId: modelId || null,
-          apiKey: apiKey || null,
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null,
           maxContextLength: maxContextLength.value
         };
       }

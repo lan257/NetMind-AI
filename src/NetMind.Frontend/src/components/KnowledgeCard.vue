@@ -18,9 +18,7 @@ const props = defineProps({
   selectedNodeRelations: { type: Array, default: () => [] },
   nodeTitleById: { type: Object, default: () => new Map() },
   loading: { type: Boolean, default: false },
-  searchNodes: { type: Function, default: null },
-  aiModels: { type: Array, default: () => [] },
-  selectedModelId: { type: String, default: '' }
+  searchNodes: { type: Function, default: null }
 });
 
 const emit = defineEmits(['preview-node', 'jump-to-node', 'save-node', 'create-relation', 'delete-relation']);
@@ -148,7 +146,7 @@ function jumpToMap() {
 
 <template>
   <div class="knowledge-card-wrapper">
-    <NodeAiChatPanel :node="currentNode" :current-map-id="currentMapId" :ai-models="aiModels" :selected-model-id="selectedModelId" />
+    <NodeAiChatPanel :node="currentNode" :current-map-id="currentMapId" />
     <aside class="knowledge-card" v-loading="cardLoading">
 
     <!-- === DISPLAY MODE === -->

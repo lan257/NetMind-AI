@@ -24,6 +24,10 @@ public sealed class AiCleanRequest
     public string? ModelId { get; init; }
 
     public string? ApiKey { get; init; }
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
 }
 
 public sealed class AiRequirementStructureRequest
@@ -35,6 +39,10 @@ public sealed class AiRequirementStructureRequest
     public string? ModelId { get; init; }
 
     public string? ApiKey { get; init; }
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
 }
 
 public sealed class AiContextChatRequest
@@ -48,6 +56,10 @@ public sealed class AiContextChatRequest
     public string? ModelId { get; init; }
 
     public string? ApiKey { get; init; }
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
 }
 
 public sealed class AiCleanResultDto
@@ -91,6 +103,10 @@ public sealed class AiNodeChatRequest
     public string? ApiKey { get; init; }
 
     public int MaxContextLength { get; init; } = 51200;
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
 }
 
 public sealed class AiNodeChatResult
@@ -142,6 +158,10 @@ public sealed class AiMapChatRequest
     public string? ApiKey { get; init; }
 
     public int MaxContextLength { get; init; } = 51200;
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
 }
 
 public sealed class AiMapChatResult
@@ -176,6 +196,10 @@ public sealed class AiAppHelpRequest
     public string? ApiKey { get; init; }
 
     public int MaxContextLength { get; init; } = 51200;
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
 }
 
 public sealed class AiAppHelpResult
