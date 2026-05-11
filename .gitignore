@@ -33,4 +33,3 @@ appsettings.*.Local.json
 .deepseek/
 AI文档/.obsidian/
 *.iss
-*.ps1
