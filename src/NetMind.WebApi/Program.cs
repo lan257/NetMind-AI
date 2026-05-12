@@ -22,7 +22,7 @@ builder.Services.AddControllers();
 builder.Services.AddSingleton<IAppLogger, AppLogger>();
 builder.Services.AddSingleton<IProjectStatusRepository, ProjectStatusRepository>();
 builder.Services.AddSingleton(_ => new PostgresConnectionFactory(
-builder.Configuration.GetConnectionString("Postgres") ?? string.Empty));
+    Environment.GetEnvironmentVariable("PGSTR") ?? string.Empty));
 builder.Services.AddScoped<IMindMapRepository, MindMapRepository>();
 builder.Services.AddScoped<INodeRepository, NodeRepository>();
 builder.Services.AddScoped<INodeRelationRepository, NodeRelationRepository>();
