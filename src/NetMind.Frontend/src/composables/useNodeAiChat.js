@@ -3,6 +3,8 @@ import { api } from '../services/api';
 import { getGlobalModelConfig } from './useGlobalModel';
 
 const STORAGE_KEY_CONTEXT = 'netmind_context_length';
+const STORAGE_KEY_AGENTBUILD_PATH = 'netmind_agentbuild_path';
+const DEFAULT_AGENTBUILD_PATH = 'G:\\AAW+\\NetMind\\AgentBuild';
 
 function loadMaxContextLength() {
   try {
@@ -20,6 +22,30 @@ function createConversationId(prefix) {
   return `${prefix}-${uuid}`;
 }
 
+function loadAgentBuildPath() {
+  try {
+    return localStorage.getItem(STORAGE_KEY_AGENTBUILD_PATH) || DEFAULT_AGENTBUILD_PATH;
+  } catch {
+    return DEFAULT_AGENTBUILD_PATH;
+  }
+}
+
+function isAgentMode(mode) {
+  return mode === 'node-agent';
+}
+
+function getCallId(call) {
+  return call?.call_id || call?.callId || '';
+}
+
+function getSkillName(call) {
+  return call?.skill_name || call?.skillName || call?.skill_id || call?.skillId || 'Skill';
+}
+
+function getSkillStatus(call) {
+  return call?.execution?.status || '';
+}
+
 export function useNodeAiChat(initialMode = 'node') {
   const messages = ref([]);
   const inputText = ref('');
@@ -27,6 +53,8 @@ export function useNodeAiChat(initialMode = 'node') {
   const contextUsagePercent = ref(0);
   const contextStatus = ref('comfortable');
   const compressedContext = ref('');
+  const agentContext = ref(null);
+  const historySkillCalls = ref([]);
   const lastResult = ref(null);
 
   const maxContextLength = ref(loadMaxContextLength());
@@ -35,6 +63,7 @@ export function useNodeAiChat(initialMode = 'node') {
   function conversationPrefix() {
     if (chatMode.value === 'app-help') return 'help';
     if (chatMode.value === 'map') return 'map';
+    if (chatMode.value === 'node-agent') return 'node-agent';
     return 'node';
   }
   const conversationId = ref(createConversationId(conversationPrefix()));
@@ -47,7 +76,7 @@ export function useNodeAiChat(initialMode = 'node') {
 
   const contextText = computed(() => {
     return messages.value
-      .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
+      .map(m => `${m.role === 'user' ? '用户' : m.role === 'assistant' ? 'AI' : '系统'}：${m.content}`)
       .join('\n\n');
   });
 
@@ -73,6 +102,70 @@ export function useNodeAiChat(initialMode = 'node') {
 
   function refreshMaxContextLength() {
     maxContextLength.value = loadMaxContextLength();
+  }
+
+  function applyChatResult(result) {
+    const assistantMessage = {
+      role: 'assistant',
+      content: result.reply || result.mainText || ''
+    };
+
+    if (result.skillCalls || result.status || result.agentTarget) {
+      assistantMessage.agent = {
+        status: result.status,
+        agentTarget: result.agentTarget,
+        skillCalls: result.skillCalls || []
+      };
+    }
+
+    messages.value.push(assistantMessage);
+    contextUsagePercent.value = result.contextUsagePercent ?? 0;
+    contextStatus.value = result.contextStatus ?? 'comfortable';
+
+    if (result.wasContextCompressed && result.compressedContext) {
+      compressedContext.value = result.compressedContext;
+      contextUsagePercent.value = (result.compressedContext.length / maxContextLength.value) * 100;
+    }
+
+    if (isAgentMode(chatMode.value)) {
+      agentContext.value = result.contextUpdate || null;
+      historySkillCalls.value = result.skillCalls || [];
+    }
+
+    lastResult.value = result;
+  }
+
+  function markSkillCallDecision(call, approved) {
+    const callId = getCallId(call);
+    if (!callId) return;
+
+    messages.value = messages.value.map((message) => {
+      if (!message.agent?.skillCalls?.length) return message;
+
+      return {
+        ...message,
+        agent: {
+          ...message.agent,
+          skillCalls: message.agent.skillCalls.map((skillCall) => {
+            if (getCallId(skillCall) !== callId) return skillCall;
+
+            return {
+              ...skillCall,
+              permission: {
+                ...(skillCall.permission || {}),
+                approved
+              },
+              execution: {
+                ...(skillCall.execution || {}),
+                status: approved ? 'permission_approved' : 'permission_denied',
+                success: approved ? null : false,
+                error: approved ? skillCall.execution?.error ?? null : '用户拒绝授权'
+              }
+            };
+          })
+        }
+      };
+    });
   }
 
   /**
@@ -126,6 +219,24 @@ export function useNodeAiChat(initialMode = 'node') {
           apiKey: modelConfig.apiKey || null,
           maxContextLength: maxContextLength.value
         };
+      } else if (chatMode.value === 'node-agent') {
+        endpoint = '/api/ai/node-agent-chat';
+        body = {
+          nodeId: node.id,
+          message: text,
+          context: getContextText(),
+          conversationId: conversationId.value,
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null,
+          maxContextLength: maxContextLength.value,
+          agentBuildPath: loadAgentBuildPath(),
+          domainAndSkillBinding: 'default',
+          agentContext: agentContext.value,
+          historySkillCalls: historySkillCalls.value,
+          confirmedSkillCalls: []
+        };
       } else {
         endpoint = '/api/ai/node-chat';
         body = {
@@ -147,16 +258,58 @@ export function useNodeAiChat(initialMode = 'node') {
       });
 
       if (result) {
-        messages.value.push({ role: 'assistant', content: result.reply });
-        contextUsagePercent.value = result.contextUsagePercent ?? 0;
-        contextStatus.value = result.contextStatus ?? 'comfortable';
+        applyChatResult(result);
+      }
+    } catch (err) {
+      messages.value.push({
+        role: 'system',
+        content: '请求失败：' + (err.message || '未知错误')
+      });
+    } finally {
+      loading.value = false;
+    }
+  }
 
-        if (result.wasContextCompressed && result.compressedContext) {
-          compressedContext.value = result.compressedContext;
-          contextUsagePercent.value = (result.compressedContext.length / maxContextLength.value) * 100;
-        }
+  async function confirmSkillCall(call, approved, node, mapId) {
+    if (!isAgentMode(chatMode.value) || !node || loading.value) return;
+    if (getSkillStatus(call) !== 'waiting_permission') return;
 
-        lastResult.value = result;
+    loading.value = true;
+    markSkillCallDecision(call, approved);
+    refreshMaxContextLength();
+
+    const skillName = getSkillName(call);
+    messages.value.push({
+      role: 'system',
+      content: approved ? `已允许执行：${skillName}` : `已拒绝执行：${skillName}`
+    });
+
+    const modelConfig = getGlobalModelConfig();
+    try {
+      const result = await api('/api/ai/node-agent-chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          nodeId: node.id,
+          message: approved
+            ? '用户已允许执行上一轮 Agent Skill，请继续完成任务。'
+            : '用户拒绝执行上一轮 Agent Skill，请在不执行该 Skill 的前提下继续回复。',
+          context: getContextText(),
+          conversationId: conversationId.value,
+          modelId: modelConfig.modelId || null,
+          endpoint: modelConfig.endpoint || null,
+          provider: modelConfig.provider || null,
+          apiKey: modelConfig.apiKey || null,
+          maxContextLength: maxContextLength.value,
+          agentBuildPath: loadAgentBuildPath(),
+          domainAndSkillBinding: 'default',
+          agentContext: agentContext.value,
+          historySkillCalls: historySkillCalls.value,
+          confirmedSkillCalls: [{ call_id: getCallId(call), approved }]
+        })
+      });
+
+      if (result) {
+        applyChatResult(result);
       }
     } catch (err) {
       messages.value.push({
@@ -171,6 +324,8 @@ export function useNodeAiChat(initialMode = 'node') {
   function clearChat() {
     messages.value = [];
     compressedContext.value = '';
+    agentContext.value = null;
+    historySkillCalls.value = [];
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
@@ -239,6 +394,8 @@ export function useNodeAiChat(initialMode = 'node') {
       content: record.content
     }));
     compressedContext.value = '';
+    agentContext.value = null;
+    historySkillCalls.value = [];
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
@@ -256,6 +413,8 @@ export function useNodeAiChat(initialMode = 'node') {
     contextUsageClass,
     maxContextLength,
     lastResult,
+    agentContext,
+    historySkillCalls,
     chatMode,
     conversationId,
     historyOpen,
@@ -263,6 +422,7 @@ export function useNodeAiChat(initialMode = 'node') {
     historyGroups,
     historyError,
     sendMessage,
+    confirmSkillCall,
     clearChat,
     startNewConversation,
     loadHistory,

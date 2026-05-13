@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
-import { ChatDotRound, Clock, Plus, ArrowRight } from '@element-plus/icons-vue';
+import { ChatDotRound, Clock, Plus, ArrowRight, Check, Close } from '@element-plus/icons-vue';
 import { useNodeAiChat } from '../composables/useNodeAiChat';
 import { renderMarkdown } from '../composables/useMarkdown';
 
@@ -15,7 +15,7 @@ const collapsed = ref(true);
 
 const chatModes = [
   { value: 'node', label: '节点问答（聊天）', icon: ChatDotRound, available: true },
-  { value: 'node-agent', label: '节点问答（Agent）', icon: ChatDotRound, available: false },
+  { value: 'node-agent', label: '节点问答（Agent）', icon: ChatDotRound, available: true },
   { value: 'map', label: '全图问答（聊天）', icon: ChatDotRound, available: true },
   { value: 'map-agent', label: '全图问答（Agent）', icon: ChatDotRound, available: false },
   { value: 'global', label: '全局问答', icon: ChatDotRound, available: false },
@@ -65,6 +65,11 @@ async function handleSend() {
   nextTick(() => scrollToBottom());
 }
 
+async function handleSkillApproval(call, approved) {
+  await chat.confirmSkillCall(call, approved, props.node, props.currentMapId);
+  nextTick(() => scrollToBottom());
+}
+
 function handleKeyup(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
@@ -74,7 +79,7 @@ function handleKeyup(event) {
 
 // Clear chat when node changes (only in node mode)
 watch(() => props.node?.id, () => {
-  if (chat.chatMode.value === 'node') {
+  if (chat.chatMode.value === 'node' || chat.chatMode.value === 'node-agent') {
     chat.clearChat();
   }
 });
@@ -90,6 +95,49 @@ const currentModeLabel = computed(() => {
   const m = chatModes.find(m => m.value === chat.chatMode.value);
   return m ? m.label : chat.chatMode.value;
 });
+
+function getSkillName(call) {
+  return call?.skill_name || call?.skillName || call?.skill_id || call?.skillId || 'Skill';
+}
+
+function getSkillReason(call) {
+  return call?.reason || '';
+}
+
+function getSkillStatus(call) {
+  return call?.execution?.status || '';
+}
+
+function getSkillStatusText(call) {
+  const status = getSkillStatus(call);
+  const map = {
+    waiting_permission: '待确认',
+    permission_approved: '已允许',
+    permission_denied: '已拒绝',
+    ready: '待执行',
+    running: '执行中',
+    success: '已完成',
+    failed: '失败'
+  };
+  return map[status] || status || '未知';
+}
+
+function getSkillStatusType(call) {
+  const status = getSkillStatus(call);
+  if (status === 'success') return 'success';
+  if (status === 'waiting_permission') return 'warning';
+  if (status === 'permission_approved') return 'success';
+  if (status === 'failed' || status === 'permission_denied') return 'danger';
+  return 'info';
+}
+
+function getPermissionMessage(call) {
+  return call?.permission?.message || '是否允许执行该 Skill？';
+}
+
+function isWaitingPermission(call) {
+  return getSkillStatus(call) === 'waiting_permission';
+}
 </script>
 
 <template>
@@ -144,6 +192,11 @@ const currentModeLabel = computed(() => {
             <p class="chat-empty-hint">针对当前选中节点进行问答或内容完善</p>
             <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
           </template>
+          <template v-else-if="chat.chatMode.value === 'node-agent'">
+            <p>节点问答 Agent</p>
+            <p class="chat-empty-hint">通过 AgentBuild 内核进行节点问答和 Skill 调用</p>
+            <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
+          </template>
           <!-- Map chat mode -->
           <template v-else-if="chat.chatMode.value === 'map'">
             <p>AI 全图问答助手</p>
@@ -164,6 +217,22 @@ const currentModeLabel = computed(() => {
         <div v-for="(msg, idx) in chat.messages.value" :key="idx" :class="['chat-message', `msg-${msg.role}`]">
           <div class="msg-role">{{ msg.role === 'user' ? '你' : msg.role === 'assistant' ? 'AI' : '系统' }}</div>
           <div class="msg-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
+          <div v-if="msg.agent?.skillCalls?.length" class="agent-skill-list">
+            <div v-for="call in msg.agent.skillCalls" :key="call.call_id || call.callId || call.skill_id || call.skillId" class="agent-skill-item">
+              <div class="agent-skill-head">
+                <span>{{ getSkillName(call) }}</span>
+                <el-tag size="small" :type="getSkillStatusType(call)">{{ getSkillStatusText(call) }}</el-tag>
+              </div>
+              <div v-if="getSkillReason(call)" class="agent-skill-reason">{{ getSkillReason(call) }}</div>
+              <div v-if="isWaitingPermission(call)" class="agent-permission">
+                <p>{{ getPermissionMessage(call) }}</p>
+                <div class="agent-permission-actions">
+                  <el-button :icon="Check" size="small" type="primary" :disabled="chat.loading.value" @click="handleSkillApproval(call, true)">允许</el-button>
+                  <el-button :icon="Close" size="small" :disabled="chat.loading.value" @click="handleSkillApproval(call, false)">拒绝</el-button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div v-if="chat.loading.value" class="chat-message msg-assistant">
           <div class="msg-role">AI</div>
@@ -366,6 +435,54 @@ const currentModeLabel = computed(() => {
 .msg-system .msg-content {
   background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
+}
+
+.agent-skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-skill-item {
+  padding: 7px 8px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
+}
+
+.agent-skill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.agent-skill-reason {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
+}
+
+.agent-permission {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--el-border-color);
+}
+
+.agent-permission p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-regular);
+}
+
+.agent-permission-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .loading-dots {

@@ -1,6 +1,40 @@
 # AI 大模型配置说明
 
-更新时间：2026-05-11
+更新时间：2026-05-13
+
+## P5.0 新增：AgentBuild 节点问答 Agent
+
+P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核脚本。普通节点聊天仍走 NetMind 后端内置 Prompt；Agent 模式由后端调用 AgentBuild 的 `src.agent_kernel`，并把当前节点上下文、模型配置、Skill 权限记录和历史上下文传入内核。
+
+- **前端入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「节点问答（Agent）」。
+- **脚本目录配置**：顶部导航栏「设置」→「AgentBuild 脚本设置」，默认 `G:\AAW+\NetMind\AgentBuild`。该目录下必须存在 `src/agent_kernel.py`。
+- **后端端点**：`POST /api/ai/node-agent-chat`。
+- **默认 Skill 绑定**：`domain_and_skill_binding=default`。
+- **模型配置来源**：沿用全局默认 AI 模型。后端把选中模型转换为 AgentBuild 的 `model_config`，包含 `model_name`、`api_url`、`api_key`、`temperature`、`max_tokens`、`timeout`、`max_retries` 和 JSON 输出格式。
+- **Prompt/身份配置**：Agent 身份和补充提示写在 `appsettings*.json` 的 `AiAgent:NodeQuestion` 中，不硬编码在业务代码内。
+- **权限交互**：AgentBuild 返回 `waiting_permission` 时，前端展示 Skill 权限确认按钮；用户允许或拒绝后，下一轮请求会带回 `confirmed_skill_calls` 与 `history_skill_calls`。
+
+新增后端配置：
+
+```json
+{
+  "AiAgent": {
+    "AgentBuildPath": "G:\\AAW+\\NetMind\\AgentBuild",
+    "PythonExecutable": "py",
+    "TimeoutSeconds": 120,
+    "Temperature": 0.2,
+    "MaxTokens": 4096,
+    "MaxRetries": 2,
+    "NodeQuestion": {
+      "DomainAndSkillBinding": "default",
+      "IdentityLines": [],
+      "CuesLines": []
+    }
+  }
+}
+```
+
+注意：AgentBuild 当前真实模型调用使用 OpenAI-compatible Chat Completions 响应结构；Agent 模式暂不支持 Ollama `/api/chat`。
 
 ## P4.4 新增：全局默认模型切换
 

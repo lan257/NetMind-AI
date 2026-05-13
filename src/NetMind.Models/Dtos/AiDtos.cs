@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace NetMind.Models.Dtos;
 
 public sealed class AiModelOptionDto
@@ -116,6 +118,67 @@ public sealed class AiNodeChatResult
     public string Prompt { get; init; } = string.Empty;
 
     public string Reply { get; init; } = string.Empty;
+
+    public string CompressedContext { get; init; } = string.Empty;
+
+    public bool WasContextCompressed { get; init; }
+
+    public double ContextUsagePercent { get; init; }
+
+    public string ContextStatus { get; init; } = string.Empty;
+
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+}
+
+public class AiAgentChatRequest
+{
+    public string Message { get; init; } = string.Empty;
+
+    public string Context { get; init; } = string.Empty;
+
+    public string? ConversationId { get; init; }
+
+    public string? ModelId { get; init; }
+
+    public string? ApiKey { get; init; }
+
+    public string? Endpoint { get; init; }
+
+    public string? Provider { get; init; }
+
+    public int MaxContextLength { get; init; } = 51200;
+
+    public string? AgentBuildPath { get; init; }
+
+    public string? DomainAndSkillBinding { get; init; }
+
+    public JsonElement? AgentContext { get; init; }
+
+    public IReadOnlyList<JsonElement> ConfirmedSkillCalls { get; init; } = Array.Empty<JsonElement>();
+
+    public IReadOnlyList<JsonElement> HistorySkillCalls { get; init; } = Array.Empty<JsonElement>();
+}
+
+public sealed class AiNodeAgentChatRequest : AiAgentChatRequest
+{
+    public long NodeId { get; init; }
+}
+
+public sealed class AiAgentChatResult
+{
+    public AiModelOptionDto SelectedModel { get; init; } = new();
+
+    public string Prompt { get; init; } = string.Empty;
+
+    public string Reply { get; init; } = string.Empty;
+
+    public string Status { get; init; } = string.Empty;
+
+    public string AgentTarget { get; init; } = string.Empty;
+
+    public IReadOnlyList<JsonElement> SkillCalls { get; init; } = Array.Empty<JsonElement>();
+
+    public JsonElement ContextUpdate { get; init; }
 
     public string CompressedContext { get; init; } = string.Empty;
 

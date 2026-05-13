@@ -13,6 +13,8 @@ const emit = defineEmits(['update:modelValue', 'model-changed']);
 const STORAGE_KEY_MODELS = 'netmind_custom_models';
 const STORAGE_KEY_CONTEXT = 'netmind_context_length';
 const STORAGE_KEY_SELECTED_MODEL = 'netmind_selected_model_id';
+const STORAGE_KEY_AGENTBUILD_PATH = 'netmind_agentbuild_path';
+const DEFAULT_AGENTBUILD_PATH = 'G:\\AAW+\\NetMind\\AgentBuild';
 
 // ---------- 后端模型列表 ----------
 const backendModels = ref([]);
@@ -181,12 +183,29 @@ function formatContextLength(val) {
   return val + '';
 }
 
+// ---------- AgentBuild 脚本路径 ----------
+const agentBuildPath = ref(DEFAULT_AGENTBUILD_PATH);
+
+function loadAgentBuildPath() {
+  try {
+    agentBuildPath.value = localStorage.getItem(STORAGE_KEY_AGENTBUILD_PATH) || DEFAULT_AGENTBUILD_PATH;
+  } catch {
+    agentBuildPath.value = DEFAULT_AGENTBUILD_PATH;
+  }
+}
+
+function saveAgentBuildPath(val) {
+  agentBuildPath.value = val;
+  localStorage.setItem(STORAGE_KEY_AGENTBUILD_PATH, val);
+}
+
 // ---------- 生命周期 ----------
 watch(() => props.modelValue, async (val) => {
   if (val) {
     loadCustomModels();
     loadBackendKeyOverrides();
     loadContextLength();
+    loadAgentBuildPath();
     await loadBackendModels();
     loadSelection();
   }
@@ -316,13 +335,28 @@ watch(() => props.modelValue, async (val) => {
         </template>
       </el-dialog>
 
+      <!-- ===== AgentBuild 脚本设置 ===== -->
+      <section class="settings-section">
+        <div class="section-heading">
+          <h3>AgentBuild 脚本设置</h3>
+        </div>
+        <p class="helper-text">
+          配置 AgentBuild 根目录。节点问答（Agent）会调用该目录下的 <code>src/agent_kernel.py</code>。
+        </p>
+        <el-input
+          :model-value="agentBuildPath"
+          placeholder="例如：G:\AAW+\NetMind\AgentBuild"
+          @update:model-value="saveAgentBuildPath"
+        />
+      </section>
+
       <!-- ===== 上下文长度 ===== -->
       <section class="settings-section">
         <div class="section-heading">
           <h3>AI 对话上下文设置</h3>
         </div>
         <p class="helper-text">
-          上下文长度决定了 API 调用时传递的历史消息量。值越大信息越准确，但速度越慢，Token 消耗越快。当前为配置项，暂未启用。
+          上下文长度决定了 API 调用时传递的历史消息量。值越大信息越准确，但速度越慢，Token 消耗越快。
         </p>
         <div class="context-setting">
           <div class="context-slider-row">

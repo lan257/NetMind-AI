@@ -33,8 +33,10 @@ builder.Services.AddScoped<INodeService, NodeService>();
 builder.Services.AddScoped<INodeRelationService, NodeRelationService>();
 builder.Services.AddScoped<IMindMapTransferService, MindMapTransferService>();
 builder.Services.AddScoped<IAiConversationRecordService, AiConversationRecordService>();
+builder.Services.AddScoped<IAiAgentService, AiAgentService>();
 builder.Services.AddHttpClient<IAiCleanService, AiCleanService>();
 builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration, builder.Environment.ContentRootPath));
+builder.Services.AddSingleton(LoadAiAgentOptions(builder.Configuration));
 
 var app = builder.Build();
 
@@ -226,6 +228,33 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
     };
 }
 
+static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration)
+{
+    var section = configuration.GetSection("AiAgent");
+    var nodeSection = section.GetSection("NodeQuestion");
+    return new AiAgentOptions
+    {
+        AgentBuildPath = section["AgentBuildPath"] ?? @"G:\AAW+\NetMind\AgentBuild",
+        PythonExecutable = section["PythonExecutable"] ?? "py",
+        TimeoutSeconds = ReadInt(section["TimeoutSeconds"], 120),
+        Temperature = ReadDouble(section["Temperature"], 0.2),
+        MaxTokens = ReadInt(section["MaxTokens"], 4096),
+        MaxRetries = ReadInt(section["MaxRetries"], 2),
+        NodeQuestion = new AiAgentScenarioOptions
+        {
+            DomainAndSkillBinding = nodeSection["DomainAndSkillBinding"] ?? "default",
+            IdentityLines = ReadConfigLines(nodeSection.GetSection("IdentityLines"), new[]
+            {
+                "你是 NetMind 的节点问答 Agent。"
+            }),
+            CuesLines = ReadConfigLines(nodeSection.GetSection("CuesLines"), new[]
+            {
+                "使用中文，围绕当前节点上下文回答。"
+            })
+        }
+    };
+}
+
 static IReadOnlyList<string> ReadPromptLines(
     IConfigurationSection promptSection,
     string fileKey,
@@ -273,4 +302,18 @@ static bool ReadBool(string? value)
 static int ReadInt(string? value, int fallback)
 {
     return int.TryParse(value, out var result) ? result : fallback;
+}
+
+static double ReadDouble(string? value, double fallback)
+{
+    return double.TryParse(value, out var result) ? result : fallback;
+}
+
+static IReadOnlyList<string> ReadConfigLines(IConfigurationSection section, IReadOnlyList<string> fallback)
+{
+    var lines = section.GetChildren()
+        .Select(child => child.Value ?? string.Empty)
+        .Where(line => !string.IsNullOrWhiteSpace(line))
+        .ToList();
+    return lines.Count > 0 ? lines : fallback;
 }
