@@ -33,6 +33,12 @@ internal static class SwaggerDocumentFactory
                 ["/api/ai/clean"] = Path("通过 DeepSeek 或 Ollama 将自然语言清洗为标准导图结构", "post"),
                 ["/api/ai/context-chat"] = Path("基于当前对话上下文与 AI 对话", "post"),
                 ["/api/ai/requirements/structure"] = Path("结合上下文压缩拆解不成熟需求", "post"),
+                ["/api/ai/node-chat"] = Path("基于当前节点上下文问答", "post"),
+                ["/api/ai/node-agent-chat"] = Path("调用 AgentBuild 进行节点问答 Agent 对话", "post"),
+                ["/api/ai/map-chat"] = Path("基于当前思维导图全量结构问答", "post"),
+                ["/api/ai/map-agent-chat"] = Path("调用 AgentBuild 进行全图问答 Agent 对话", "post"),
+                ["/api/ai/global-agent-chat"] = Path("调用 AgentBuild 进行全局问答 Agent 对话", "post"),
+                ["/api/ai/app-help-chat"] = Path("基于应用帮助文档问答", "post"),
                 ["/api/ai-conversation-records"] = Path("查询和创建 AI 对话记录", "get", "post"),
                 ["/api/ai-conversation-records/{id}"] = Path("查询、更新和逻辑删除单条 AI 对话记录", "get", "put", "delete"),
                 ["/api/system/health"] = Path("查询系统健康状态", "get")

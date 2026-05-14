@@ -17,8 +17,8 @@ const chatModes = [
   { value: 'node', label: '节点问答（聊天）', icon: ChatDotRound, available: true },
   { value: 'node-agent', label: '节点问答（Agent）', icon: ChatDotRound, available: true },
   { value: 'map', label: '全图问答（聊天）', icon: ChatDotRound, available: true },
-  { value: 'map-agent', label: '全图问答（Agent）', icon: ChatDotRound, available: false },
-  { value: 'global', label: '全局问答', icon: ChatDotRound, available: false },
+  { value: 'map-agent', label: '全图问答（Agent）', icon: ChatDotRound, available: true },
+  { value: 'global', label: '全局问答（Agent）', icon: ChatDotRound, available: true },
   { value: 'app-help', label: '应用帮助', icon: ChatDotRound, available: true }
 ];
 
@@ -53,13 +53,25 @@ function selectMode(mode) {
   }
 }
 
+function requiresNodeMode(mode) {
+  return mode === 'node' || mode === 'node-agent';
+}
+
+function requiresMapMode(mode) {
+  return mode === 'map' || mode === 'map-agent';
+}
+
+const inputDisabled = computed(() => {
+  return (requiresNodeMode(chat.chatMode.value) && !props.node) ||
+    (requiresMapMode(chat.chatMode.value) && !props.currentMapId) ||
+    chat.loading.value;
+});
+
 async function handleSend() {
   if (!chat.inputText.value.trim() || chat.loading.value) return;
 
-  // App-help and map modes don't need a selected node
-  if (chat.chatMode.value !== 'app-help' && chat.chatMode.value !== 'map' && !props.node) return;
-  // Map mode needs currentMapId
-  if (chat.chatMode.value === 'map' && !props.currentMapId) return;
+  if (requiresNodeMode(chat.chatMode.value) && !props.node) return;
+  if (requiresMapMode(chat.chatMode.value) && !props.currentMapId) return;
 
   await chat.sendMessage(props.node, props.currentMapId);
   nextTick(() => scrollToBottom());
@@ -203,6 +215,15 @@ function isWaitingPermission(call) {
             <p class="chat-empty-hint">针对当前思维导图的整体结构进行问答和分析</p>
             <p class="chat-empty-hint" v-if="!currentMapId">请先在侧边栏选择一个思维导图</p>
           </template>
+          <template v-else-if="chat.chatMode.value === 'map-agent'">
+            <p>全图问答 Agent</p>
+            <p class="chat-empty-hint">通过 AgentBuild 内核读取当前导图全量数据并回答</p>
+            <p class="chat-empty-hint" v-if="!currentMapId">请先在侧边栏选择一个思维导图</p>
+          </template>
+          <template v-else-if="chat.chatMode.value === 'global'">
+            <p>全局问答 Agent</p>
+            <p class="chat-empty-hint">仅基于基础信息、对话历史和 Agent 记忆回答</p>
+          </template>
           <!-- App help mode -->
           <template v-else-if="chat.chatMode.value === 'app-help'">
             <p>应用帮助助手</p>
@@ -247,13 +268,13 @@ function isWaitingPermission(call) {
           type="textarea"
           :rows="2"
           placeholder="输入问题或需求…"
-          :disabled="(chat.chatMode.value !== 'app-help' && chat.chatMode.value !== 'map' && !node) || (chat.chatMode.value === 'map' && !currentMapId) || chat.loading.value"
+          :disabled="inputDisabled"
           @keyup="handleKeyup"
         />
         <el-button
           type="primary"
           :icon="ChatDotRound"
-          :disabled="!chat.inputText.value.trim() || chat.loading.value || (chat.chatMode.value !== 'app-help' && chat.chatMode.value !== 'map' && !node) || (chat.chatMode.value === 'map' && !currentMapId)"
+          :disabled="!chat.inputText.value.trim() || inputDisabled"
           :loading="chat.loading.value"
           size="small"
           @click="handleSend"

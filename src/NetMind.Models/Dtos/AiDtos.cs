@@ -164,6 +164,15 @@ public sealed class AiNodeAgentChatRequest : AiAgentChatRequest
     public long NodeId { get; init; }
 }
 
+public sealed class AiMapAgentChatRequest : AiAgentChatRequest
+{
+    public long MapId { get; init; }
+}
+
+public sealed class AiGlobalAgentChatRequest : AiAgentChatRequest
+{
+}
+
 public sealed class AiAgentChatResult
 {
     public AiModelOptionDto SelectedModel { get; init; } = new();

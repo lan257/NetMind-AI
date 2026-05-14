@@ -1,6 +1,20 @@
 # AI 大模型配置说明
 
-更新时间：2026-05-13
+更新时间：2026-05-14
+
+## P5.1 新增：全图问答 Agent 与全局问答 Agent
+
+P5.1 在 P5.0 节点问答 Agent 的基础上，继续接入六种聊天方式中的「全图问答（Agent）」和「全局问答（Agent）」。两种模式都通过 NetMind 后端调用外部 AgentBuild `src.agent_kernel`，沿用统一的模型配置、Skill 权限确认、Agent 记忆和对话历史机制。
+
+- **全图问答（Agent）入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「全图问答（Agent）」。
+- **全图问答（Agent）端点**：`POST /api/ai/map-agent-chat`。
+- **全图上下文范围**：后端传递当前导图的基础信息、全量节点 `nodes`、全量关联 `relations`、统计信息和对话历史；节点内容、父子层级、排序和关联权重都会进入 `focus_context`。
+- **全局问答（Agent）入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「全局问答（Agent）」。
+- **全局问答（Agent）端点**：`POST /api/ai/global-agent-chat`。
+- **全局上下文范围**：只传递 NetMind 基础应用信息、对话历史、Agent 记忆和上下文预算，不传递任何节点、关联或思维导图数据。
+- **Prompt/身份配置**：新增 `AiAgent:MapQuestion` 和 `AiAgent:GlobalQuestion`，与 `NodeQuestion` 一样写在 `appsettings*.json` 中。
+- **AgentBuild 参数适配**：按 AgentBuild 当前接口规范，后端额外传入 `skill_runtime`。该字段不进入 Prompt，只会在 Kernel 执行 Skill 时注入到 `params.__runtime`，用于提供 NetMind WebAPI 地址、Skill 超时和 endpoint 映射。
+- **Python 执行器**：默认仍读取 `AiAgent:PythonExecutable`，当前配置为 `py`；若本机 Windows Python Launcher 无法发现 Python，可改为本机 `python.exe` 的绝对路径。
 
 ## P5.0 新增：AgentBuild 节点问答 Agent
 
@@ -25,7 +39,19 @@ P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核�
     "Temperature": 0.2,
     "MaxTokens": 4096,
     "MaxRetries": 2,
+    "NetMindApiBaseUrl": "http://127.0.0.1:5120",
+    "SkillRuntimeTimeoutSeconds": 10,
     "NodeQuestion": {
+      "DomainAndSkillBinding": "default",
+      "IdentityLines": [],
+      "CuesLines": []
+    },
+    "MapQuestion": {
+      "DomainAndSkillBinding": "default",
+      "IdentityLines": [],
+      "CuesLines": []
+    },
+    "GlobalQuestion": {
       "DomainAndSkillBinding": "default",
       "IdentityLines": [],
       "CuesLines": []

@@ -20,6 +20,7 @@ public sealed class AiAgentService : IAiAgentService
 
     private readonly AiAgentOptions _agentOptions;
     private readonly AiCleanOptions _aiOptions;
+    private readonly IMindMapRepository _mindMapRepository;
     private readonly INodeRepository _nodeRepository;
     private readonly INodeRelationRepository _relationRepository;
     private readonly IAppLogger _logger;
@@ -27,12 +28,14 @@ public sealed class AiAgentService : IAiAgentService
     public AiAgentService(
         AiAgentOptions agentOptions,
         AiCleanOptions aiOptions,
+        IMindMapRepository mindMapRepository,
         INodeRepository nodeRepository,
         INodeRelationRepository relationRepository,
         IAppLogger logger)
     {
         _agentOptions = agentOptions;
         _aiOptions = aiOptions;
+        _mindMapRepository = mindMapRepository;
         _nodeRepository = nodeRepository;
         _relationRepository = relationRepository;
         _logger = logger;
@@ -40,11 +43,6 @@ public sealed class AiAgentService : IAiAgentService
 
     public async Task<AiAgentChatResult> ChatWithNodeAgentAsync(AiNodeAgentChatRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Message) && request.ConfirmedSkillCalls.Count == 0)
-        {
-            throw new ArgumentException("请输入对话内容。", nameof(request));
-        }
-
         if (request.NodeId <= 0)
         {
             throw new ArgumentException("请选择有效的节点。", nameof(request));
@@ -54,6 +52,56 @@ public sealed class AiAgentService : IAiAgentService
         if (node is null)
         {
             throw new ArgumentException("节点不存在。", nameof(request));
+        }
+
+        return await ChatWithAgentAsync(
+            request,
+            _agentOptions.NodeQuestion,
+            "node-agent",
+            (chatHistory, maxLength, usagePercent, contextStatus) =>
+                BuildNodeFocusContextAsync(node, chatHistory, maxLength, usagePercent, contextStatus));
+    }
+
+    public async Task<AiAgentChatResult> ChatWithMapAgentAsync(AiMapAgentChatRequest request)
+    {
+        if (request.MapId <= 0)
+        {
+            throw new ArgumentException("请选择有效的思维导图。", nameof(request));
+        }
+
+        var map = await _mindMapRepository.GetAsync(request.MapId);
+        if (map is null)
+        {
+            throw new ArgumentException("思维导图不存在。", nameof(request));
+        }
+
+        return await ChatWithAgentAsync(
+            request,
+            _agentOptions.MapQuestion,
+            "map-agent",
+            (chatHistory, maxLength, usagePercent, contextStatus) =>
+                BuildMapFocusContextAsync(map, chatHistory, maxLength, usagePercent, contextStatus));
+    }
+
+    public async Task<AiAgentChatResult> ChatWithGlobalAgentAsync(AiGlobalAgentChatRequest request)
+    {
+        return await ChatWithAgentAsync(
+            request,
+            _agentOptions.GlobalQuestion,
+            "global-agent",
+            (chatHistory, maxLength, usagePercent, contextStatus) =>
+                Task.FromResult(BuildGlobalFocusContext(chatHistory, maxLength, usagePercent, contextStatus)));
+    }
+
+    private async Task<AiAgentChatResult> ChatWithAgentAsync(
+        AiAgentChatRequest request,
+        AiAgentScenarioOptions scenario,
+        string conversationPrefix,
+        Func<string, int, double, string, Task<Dictionary<string, object?>>> buildFocusContextAsync)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message) && (request.ConfirmedSkillCalls?.Count ?? 0) == 0)
+        {
+            throw new ArgumentException("请输入对话内容。", nameof(request));
         }
 
         var maxLength = Math.Max(request.MaxContextLength, 1024);
@@ -75,13 +123,12 @@ public sealed class AiAgentService : IAiAgentService
             contextText = string.Empty;
         }
 
-        var scenario = _agentOptions.NodeQuestion;
         var selectedModel = ResolveAgentModel(request);
         var modelConfig = BuildModelConfig(selectedModel, request.ApiKey);
-        var focusContext = await BuildNodeFocusContextAsync(node, contextText, maxLength, usagePercent, contextStatus);
+        var focusContext = await buildFocusContextAsync(contextText, maxLength, usagePercent, contextStatus);
         var agentContext = BuildAgentContext(request.AgentContext, focusContext);
         var kernelRoot = ResolveAgentBuildRoot(request.AgentBuildPath);
-        var kernelRequest = BuildKernelRequest(request, scenario, modelConfig, agentContext);
+        var kernelRequest = BuildKernelRequest(request, scenario, modelConfig, agentContext, conversationPrefix);
         var promptForLog = BuildRedactedPayloadJson(kernelRequest);
         var kernelResponse = await RunKernelAsync(kernelRoot, kernelRequest);
 
@@ -105,10 +152,11 @@ public sealed class AiAgentService : IAiAgentService
     }
 
     private Dictionary<string, object?> BuildKernelRequest(
-        AiNodeAgentChatRequest request,
+        AiAgentChatRequest request,
         AiAgentScenarioOptions scenario,
         Dictionary<string, object?> modelConfig,
-        Dictionary<string, object?> agentContext)
+        Dictionary<string, object?> agentContext,
+        string conversationPrefix)
     {
         var domain = string.IsNullOrWhiteSpace(request.DomainAndSkillBinding)
             ? scenario.DomainAndSkillBinding
@@ -121,7 +169,7 @@ public sealed class AiAgentService : IAiAgentService
         return new Dictionary<string, object?>
         {
             ["conversation_id"] = string.IsNullOrWhiteSpace(request.ConversationId)
-                ? $"node-agent-{Guid.NewGuid():N}"
+                ? $"{conversationPrefix}-{Guid.NewGuid():N}"
                 : request.ConversationId,
             ["user_text"] = userText,
             ["domain_and_skill_binding"] = string.IsNullOrWhiteSpace(domain) ? "default" : domain,
@@ -129,8 +177,52 @@ public sealed class AiAgentService : IAiAgentService
             ["cues"] = JoinLines(scenario.CuesLines, "使用中文，围绕当前节点上下文回答。"),
             ["model_config"] = modelConfig,
             ["context"] = agentContext,
+            ["skill_runtime"] = BuildSkillRuntime(),
             ["confirmed_skill_calls"] = CloneElements(request.ConfirmedSkillCalls),
             ["history_skill_calls"] = CloneElements(request.HistorySkillCalls)
+        };
+    }
+
+    private Dictionary<string, object?> BuildSkillRuntime()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["netmind_api_base_url"] = NormalizeBaseUrl(_agentOptions.NetMindApiBaseUrl),
+            ["shared"] = new Dictionary<string, object?>
+            {
+                ["timeout_seconds"] = Math.Max(_agentOptions.SkillRuntimeTimeoutSeconds, 1)
+            },
+            ["skills"] = new Dictionary<string, object?>
+            {
+                ["search_nodes"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/nodes/search"
+                },
+                ["list_map_nodes"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/nodes/by-map/{mapId}"
+                },
+                ["get_node"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/nodes/{id}"
+                },
+                ["list_map_relations"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/node-relations/by-map/{mapId}"
+                },
+                ["list_node_relations"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/node-relations/by-node/{nodeId}"
+                },
+                ["list_mind_maps"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/mind-maps"
+                },
+                ["get_mind_map"] = new Dictionary<string, object?>
+                {
+                    ["endpoint"] = "/api/mind-maps/{id}"
+                }
+            }
         };
     }
 
@@ -363,6 +455,86 @@ public sealed class AiAgentService : IAiAgentService
         };
     }
 
+    private async Task<Dictionary<string, object?>> BuildMapFocusContextAsync(
+        MindMapEntity map,
+        string chatHistory,
+        int maxLength,
+        double usagePercent,
+        string contextStatus)
+    {
+        var nodes = await _nodeRepository.ListByMapAsync(map.Id);
+        var relations = await _relationRepository.ListByMapAsync(map.Id);
+        var nodeById = nodes.ToDictionary(node => node.Id);
+        var nodeItems = nodes
+            .OrderBy(node => node.ParentId.HasValue ? 1 : 0)
+            .ThenBy(node => node.ParentId ?? 0)
+            .ThenBy(node => node.OrderNo)
+            .ThenBy(node => node.Id)
+            .Select(NodeToFocusDto)
+            .ToList();
+        var relationItems = relations
+            .OrderBy(relation => relation.SourceId)
+            .ThenBy(relation => relation.TargetId)
+            .ThenBy(relation => relation.Id)
+            .Select(relation => RelationToFocusDto(relation, nodeById))
+            .ToList();
+
+        return new Dictionary<string, object?>
+        {
+            ["mode"] = "map-question-agent",
+            ["domain_and_skill_binding"] = "default",
+            ["map"] = new Dictionary<string, object?>
+            {
+                ["id"] = map.Id,
+                ["title"] = map.Title,
+                ["root_node_id"] = map.RootNodeId,
+                ["created_at"] = map.CreatedAt,
+                ["updated_at"] = map.UpdatedAt
+            },
+            ["nodes"] = nodeItems,
+            ["relations"] = relationItems,
+            ["statistics"] = new Dictionary<string, object?>
+            {
+                ["node_count"] = nodeItems.Count,
+                ["relation_count"] = relationItems.Count
+            },
+            ["chat_history"] = string.IsNullOrWhiteSpace(chatHistory) ? "（无历史上下文）" : chatHistory,
+            ["context_budget"] = new Dictionary<string, object?>
+            {
+                ["max_context_length"] = maxLength,
+                ["usage_percent"] = usagePercent,
+                ["status"] = contextStatus
+            }
+        };
+    }
+
+    private static Dictionary<string, object?> BuildGlobalFocusContext(
+        string chatHistory,
+        int maxLength,
+        double usagePercent,
+        string contextStatus)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["mode"] = "global-question-agent",
+            ["domain_and_skill_binding"] = "default",
+            ["base_info"] = new Dictionary<string, object?>
+            {
+                ["product_name"] = "NetMind",
+                ["product_scope"] = "基于 AI 的知识网络构建与可视化工具。",
+                ["agent_scope"] = "全局问答 Agent 仅接收用户问题、对话历史、Agent 记忆和基础应用信息。",
+                ["data_scope"] = "本模式不传递任何节点、关联关系或思维导图数据。"
+            },
+            ["chat_history"] = string.IsNullOrWhiteSpace(chatHistory) ? "（无历史上下文）" : chatHistory,
+            ["context_budget"] = new Dictionary<string, object?>
+            {
+                ["max_context_length"] = maxLength,
+                ["usage_percent"] = usagePercent,
+                ["status"] = contextStatus
+            }
+        };
+    }
+
     private static Dictionary<string, object?> BuildAgentContext(
         JsonElement? previousContext,
         Dictionary<string, object?> focusContext)
@@ -446,9 +618,30 @@ public sealed class AiAgentService : IAiAgentService
         };
     }
 
-    private static IReadOnlyList<JsonElement> CloneElements(IReadOnlyList<JsonElement> values)
+    private static Dictionary<string, object?> RelationToFocusDto(
+        NodeRelationEntity relation,
+        IReadOnlyDictionary<long, NodeEntity> nodeById)
     {
-        return values.Select(value => value.Clone()).ToList();
+        nodeById.TryGetValue(relation.SourceId, out var sourceNode);
+        nodeById.TryGetValue(relation.TargetId, out var targetNode);
+        return new Dictionary<string, object?>
+        {
+            ["id"] = relation.Id,
+            ["map_id"] = relation.MapId,
+            ["source_id"] = relation.SourceId,
+            ["source_title"] = sourceNode?.Title ?? relation.SourceTitle ?? $"节点#{relation.SourceId}",
+            ["target_id"] = relation.TargetId,
+            ["target_title"] = targetNode?.Title ?? relation.TargetTitle ?? $"节点#{relation.TargetId}",
+            ["relation_type"] = relation.RelationType,
+            ["weight"] = relation.Weight
+        };
+    }
+
+    private static IReadOnlyList<JsonElement> CloneElements(IReadOnlyList<JsonElement>? values)
+    {
+        return values is null
+            ? Array.Empty<JsonElement>()
+            : values.Select(value => value.Clone()).ToList();
     }
 
     private static JsonElement EmptyJsonObject()
@@ -472,6 +665,14 @@ public sealed class AiAgentService : IAiAgentService
         return string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable)
             ? null
             : Environment.GetEnvironmentVariable(model.ApiKeyEnvironmentVariable);
+    }
+
+    private static string NormalizeBaseUrl(string? baseUrl)
+    {
+        var value = string.IsNullOrWhiteSpace(baseUrl)
+            ? "http://127.0.0.1:5120"
+            : baseUrl.Trim();
+        return value.TrimEnd('/');
     }
 
     private static AiModelOptionDto ToDto(AiModelOptions model)

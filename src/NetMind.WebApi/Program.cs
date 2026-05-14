@@ -15,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
     string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
 {
-    builder.WebHost.UseUrls("http://0.0.0.0:5120");
+    builder.WebHost.UseUrls("http://localhost:5120");
 }
 
 builder.Services.AddControllers();
@@ -232,6 +232,8 @@ static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration)
 {
     var section = configuration.GetSection("AiAgent");
     var nodeSection = section.GetSection("NodeQuestion");
+    var mapSection = section.GetSection("MapQuestion");
+    var globalSection = section.GetSection("GlobalQuestion");
     return new AiAgentOptions
     {
         AgentBuildPath = section["AgentBuildPath"] ?? @"G:\AAW+\NetMind\AgentBuild",
@@ -240,18 +242,33 @@ static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration)
         Temperature = ReadDouble(section["Temperature"], 0.2),
         MaxTokens = ReadInt(section["MaxTokens"], 4096),
         MaxRetries = ReadInt(section["MaxRetries"], 2),
-        NodeQuestion = new AiAgentScenarioOptions
-        {
-            DomainAndSkillBinding = nodeSection["DomainAndSkillBinding"] ?? "default",
-            IdentityLines = ReadConfigLines(nodeSection.GetSection("IdentityLines"), new[]
-            {
-                "你是 NetMind 的节点问答 Agent。"
-            }),
-            CuesLines = ReadConfigLines(nodeSection.GetSection("CuesLines"), new[]
-            {
-                "使用中文，围绕当前节点上下文回答。"
-            })
-        }
+        NetMindApiBaseUrl = section["NetMindApiBaseUrl"] ?? "http://127.0.0.1:5120",
+        SkillRuntimeTimeoutSeconds = ReadInt(section["SkillRuntimeTimeoutSeconds"], 10),
+        NodeQuestion = ReadAiAgentScenarioOptions(
+            nodeSection,
+            "你是 NetMind 的节点问答 Agent。",
+            "使用中文，围绕当前节点上下文回答。"),
+        MapQuestion = ReadAiAgentScenarioOptions(
+            mapSection,
+            "你是 NetMind 的全图问答 Agent。",
+            "使用中文，围绕当前思维导图的全量结构和关联回答。"),
+        GlobalQuestion = ReadAiAgentScenarioOptions(
+            globalSection,
+            "你是 NetMind 的全局问答 Agent。",
+            "使用中文回答，不假设你拿到了节点或思维导图数据。")
+    };
+}
+
+static AiAgentScenarioOptions ReadAiAgentScenarioOptions(
+    IConfigurationSection section,
+    string fallbackIdentity,
+    string fallbackCues)
+{
+    return new AiAgentScenarioOptions
+    {
+        DomainAndSkillBinding = section["DomainAndSkillBinding"] ?? "default",
+        IdentityLines = ReadConfigLines(section.GetSection("IdentityLines"), new[] { fallbackIdentity }),
+        CuesLines = ReadConfigLines(section.GetSection("CuesLines"), new[] { fallbackCues })
     };
 }
 

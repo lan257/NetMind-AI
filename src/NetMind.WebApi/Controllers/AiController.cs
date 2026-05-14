@@ -129,25 +129,39 @@ public sealed class AiController : ControllerBase
         try
         {
             var result = await _aiAgentService.ChatWithNodeAgentAsync(request);
-            if (!string.IsNullOrWhiteSpace(request.ConversationId))
-            {
-                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
-                {
-                    ConversationId = request.ConversationId,
-                    Role = "user",
-                    Content = string.IsNullOrWhiteSpace(request.Message) ? "用户处理了 Agent Skill 权限。" : request.Message,
-                    ModelId = request.ModelId
-                });
-                await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
-                {
-                    ConversationId = request.ConversationId,
-                    Role = "assistant",
-                    Content = result.Reply,
-                    ModelId = result.SelectedModel.Id,
-                    Prompt = result.Prompt,
-                    WasContextCompressed = result.WasContextCompressed
-                });
-            }
+            await SaveAgentConversationAsync(request, result);
+
+            return ApiResult<AiAgentChatResult>.Ok(result);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException or TimeoutException)
+        {
+            return BadRequest(ApiResult<AiAgentChatResult>.Fail(ex.Message));
+        }
+    }
+
+    [HttpPost("map-agent-chat")]
+    public async Task<ActionResult<ApiResult<AiAgentChatResult>>> ChatWithMapAgentAsync(AiMapAgentChatRequest request)
+    {
+        try
+        {
+            var result = await _aiAgentService.ChatWithMapAgentAsync(request);
+            await SaveAgentConversationAsync(request, result);
+
+            return ApiResult<AiAgentChatResult>.Ok(result);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException or TimeoutException)
+        {
+            return BadRequest(ApiResult<AiAgentChatResult>.Fail(ex.Message));
+        }
+    }
+
+    [HttpPost("global-agent-chat")]
+    public async Task<ActionResult<ApiResult<AiAgentChatResult>>> ChatWithGlobalAgentAsync(AiGlobalAgentChatRequest request)
+    {
+        try
+        {
+            var result = await _aiAgentService.ChatWithGlobalAgentAsync(request);
+            await SaveAgentConversationAsync(request, result);
 
             return ApiResult<AiAgentChatResult>.Ok(result);
         }
@@ -224,5 +238,30 @@ public sealed class AiController : ControllerBase
         {
             return BadRequest(ApiResult<AiContextChatResultDto>.Fail(ex.Message));
         }
+    }
+
+    private async Task SaveAgentConversationAsync(AiAgentChatRequest request, AiAgentChatResult result)
+    {
+        if (string.IsNullOrWhiteSpace(request.ConversationId))
+        {
+            return;
+        }
+
+        await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+        {
+            ConversationId = request.ConversationId,
+            Role = "user",
+            Content = string.IsNullOrWhiteSpace(request.Message) ? "用户处理了 Agent Skill 权限。" : request.Message,
+            ModelId = request.ModelId
+        });
+        await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
+        {
+            ConversationId = request.ConversationId,
+            Role = "assistant",
+            Content = result.Reply,
+            ModelId = result.SelectedModel.Id,
+            Prompt = result.Prompt,
+            WasContextCompressed = result.WasContextCompressed
+        });
     }
 }

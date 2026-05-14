@@ -31,7 +31,21 @@ function loadAgentBuildPath() {
 }
 
 function isAgentMode(mode) {
-  return mode === 'node-agent';
+  return mode === 'node-agent' || mode === 'map-agent' || mode === 'global';
+}
+
+function requiresNode(mode) {
+  return mode === 'node' || mode === 'node-agent';
+}
+
+function requiresMap(mode) {
+  return mode === 'map' || mode === 'map-agent';
+}
+
+function getAgentEndpoint(mode) {
+  if (mode === 'map-agent') return '/api/ai/map-agent-chat';
+  if (mode === 'global') return '/api/ai/global-agent-chat';
+  return '/api/ai/node-agent-chat';
 }
 
 function getCallId(call) {
@@ -63,7 +77,9 @@ export function useNodeAiChat(initialMode = 'node') {
   function conversationPrefix() {
     if (chatMode.value === 'app-help') return 'help';
     if (chatMode.value === 'map') return 'map';
+    if (chatMode.value === 'map-agent') return 'map-agent';
     if (chatMode.value === 'node-agent') return 'node-agent';
+    if (chatMode.value === 'global') return 'global';
     return 'node';
   }
   const conversationId = ref(createConversationId(conversationPrefix()));
@@ -168,19 +184,43 @@ export function useNodeAiChat(initialMode = 'node') {
     });
   }
 
+  function buildAgentRequestBody({ node, mapId, message, modelConfig, confirmedSkillCalls = [] }) {
+    const body = {
+      message,
+      context: getContextText(),
+      conversationId: conversationId.value,
+      modelId: modelConfig.modelId || null,
+      endpoint: modelConfig.endpoint || null,
+      provider: modelConfig.provider || null,
+      apiKey: modelConfig.apiKey || null,
+      maxContextLength: maxContextLength.value,
+      agentBuildPath: loadAgentBuildPath(),
+      domainAndSkillBinding: 'default',
+      agentContext: agentContext.value,
+      historySkillCalls: historySkillCalls.value,
+      confirmedSkillCalls
+    };
+
+    if (chatMode.value === 'node-agent') {
+      body.nodeId = node.id;
+    } else if (chatMode.value === 'map-agent') {
+      body.mapId = Number(mapId);
+    }
+
+    return body;
+  }
+
   /**
    * 发送消息。模型配置从全局设置中自动读取。
-   * @param {Object|null} node - 当前节点（app-help 和 map 模式可为 null）
-   * @param {number|null} mapId - 当前导图 ID（map 模式必须）
+   * @param {Object|null} node - 当前节点（非节点模式可为 null）
+   * @param {number|null} mapId - 当前导图 ID（全图模式必须）
    */
   async function sendMessage(node, mapId) {
     const text = inputText.value.trim();
     if (!text) return;
 
-    // App-help and map mode don't require a node
-    if (chatMode.value !== 'app-help' && chatMode.value !== 'map' && !node) return;
-    // Map mode requires a mapId
-    if (chatMode.value === 'map' && !mapId) return;
+    if (requiresNode(chatMode.value) && !node) return;
+    if (requiresMap(chatMode.value) && !mapId) return;
 
     inputText.value = '';
     messages.value.push({ role: 'user', content: text });
@@ -194,7 +234,16 @@ export function useNodeAiChat(initialMode = 'node') {
     try {
       let endpoint, body;
 
-      if (chatMode.value === 'app-help') {
+      if (isAgentMode(chatMode.value)) {
+        endpoint = getAgentEndpoint(chatMode.value);
+        body = buildAgentRequestBody({
+          node,
+          mapId,
+          message: text,
+          modelConfig,
+          confirmedSkillCalls: []
+        });
+      } else if (chatMode.value === 'app-help') {
         endpoint = '/api/ai/app-help-chat';
         body = {
           message: text,
@@ -218,24 +267,6 @@ export function useNodeAiChat(initialMode = 'node') {
           provider: modelConfig.provider || null,
           apiKey: modelConfig.apiKey || null,
           maxContextLength: maxContextLength.value
-        };
-      } else if (chatMode.value === 'node-agent') {
-        endpoint = '/api/ai/node-agent-chat';
-        body = {
-          nodeId: node.id,
-          message: text,
-          context: getContextText(),
-          conversationId: conversationId.value,
-          modelId: modelConfig.modelId || null,
-          endpoint: modelConfig.endpoint || null,
-          provider: modelConfig.provider || null,
-          apiKey: modelConfig.apiKey || null,
-          maxContextLength: maxContextLength.value,
-          agentBuildPath: loadAgentBuildPath(),
-          domainAndSkillBinding: 'default',
-          agentContext: agentContext.value,
-          historySkillCalls: historySkillCalls.value,
-          confirmedSkillCalls: []
         };
       } else {
         endpoint = '/api/ai/node-chat';
@@ -271,7 +302,9 @@ export function useNodeAiChat(initialMode = 'node') {
   }
 
   async function confirmSkillCall(call, approved, node, mapId) {
-    if (!isAgentMode(chatMode.value) || !node || loading.value) return;
+    if (!isAgentMode(chatMode.value) || loading.value) return;
+    if (requiresNode(chatMode.value) && !node) return;
+    if (requiresMap(chatMode.value) && !mapId) return;
     if (getSkillStatus(call) !== 'waiting_permission') return;
 
     loading.value = true;
@@ -286,26 +319,17 @@ export function useNodeAiChat(initialMode = 'node') {
 
     const modelConfig = getGlobalModelConfig();
     try {
-      const result = await api('/api/ai/node-agent-chat', {
+      const result = await api(getAgentEndpoint(chatMode.value), {
         method: 'POST',
-        body: JSON.stringify({
-          nodeId: node.id,
+        body: JSON.stringify(buildAgentRequestBody({
+          node,
+          mapId,
           message: approved
             ? '用户已允许执行上一轮 Agent Skill，请继续完成任务。'
             : '用户拒绝执行上一轮 Agent Skill，请在不执行该 Skill 的前提下继续回复。',
-          context: getContextText(),
-          conversationId: conversationId.value,
-          modelId: modelConfig.modelId || null,
-          endpoint: modelConfig.endpoint || null,
-          provider: modelConfig.provider || null,
-          apiKey: modelConfig.apiKey || null,
-          maxContextLength: maxContextLength.value,
-          agentBuildPath: loadAgentBuildPath(),
-          domainAndSkillBinding: 'default',
-          agentContext: agentContext.value,
-          historySkillCalls: historySkillCalls.value,
+          modelConfig,
           confirmedSkillCalls: [{ call_id: getCallId(call), approved }]
-        })
+        }))
       });
 
       if (result) {

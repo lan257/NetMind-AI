@@ -14,7 +14,15 @@ public sealed class AiAgentOptions
 
     public int MaxRetries { get; init; } = 2;
 
+    public string NetMindApiBaseUrl { get; init; } = "http://127.0.0.1:5120";
+
+    public int SkillRuntimeTimeoutSeconds { get; init; } = 10;
+
     public AiAgentScenarioOptions NodeQuestion { get; init; } = new();
+
+    public AiAgentScenarioOptions MapQuestion { get; init; } = new();
+
+    public AiAgentScenarioOptions GlobalQuestion { get; init; } = new();
 }
 
 public sealed class AiAgentScenarioOptions
