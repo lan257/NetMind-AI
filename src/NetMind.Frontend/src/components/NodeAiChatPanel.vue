@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { ElMessageBox } from 'element-plus';
 import { ChatDotRound, Clock, Plus, ArrowRight, Check, Close } from '@element-plus/icons-vue';
 import { useNodeAiChat } from '../composables/useNodeAiChat';
 import { renderMarkdown } from '../composables/useMarkdown';
@@ -78,7 +79,25 @@ async function handleSend() {
 }
 
 async function handleSkillApproval(call, approved) {
-  await chat.confirmSkillCall(call, approved, props.node, props.currentMapId);
+  let rejectReason = '';
+  if (!approved) {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '可填写拒绝原因，AI 会在下一轮根据原因继续回答。',
+        '拒绝 Skill 调用',
+        {
+          confirmButtonText: '提交拒绝',
+          cancelButtonText: '取消',
+          inputPlaceholder: '例如：该文件包含隐私内容，不允许读取。'
+        }
+      );
+      rejectReason = value || '';
+    } catch {
+      return;
+    }
+  }
+
+  await chat.confirmSkillCall(call, approved, props.node, props.currentMapId, rejectReason);
   nextTick(() => scrollToBottom());
 }
 
@@ -113,11 +132,24 @@ function getSkillName(call) {
 }
 
 function getSkillReason(call) {
-  return call?.reason || '';
+  return call?.reason ||
+    call?.permission?.reject_reason ||
+    call?.execution?.denied_reason ||
+    call?.execution?.error ||
+    '';
 }
 
 function getSkillStatus(call) {
   return call?.execution?.status || '';
+}
+
+function getAgentStatusText(status) {
+  const map = {
+    waiting_permission: '等待确认',
+    running: '执行中',
+    planning: '规划中'
+  };
+  return map[status] || status || '进行中';
 }
 
 function getSkillStatusText(call) {
@@ -237,7 +269,15 @@ function isWaitingPermission(call) {
         </div>
         <div v-for="(msg, idx) in chat.messages.value" :key="idx" :class="['chat-message', `msg-${msg.role}`]">
           <div class="msg-role">{{ msg.role === 'user' ? '你' : msg.role === 'assistant' ? 'AI' : '系统' }}</div>
-          <div class="msg-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
+          <div v-if="msg.agent?.progressText" class="agent-progress">
+            <div class="agent-progress-head">
+              <span>Agent 进度</span>
+              <el-tag size="small" type="warning">{{ getAgentStatusText(msg.agent.status) }}</el-tag>
+            </div>
+            <div v-if="msg.agent.agentTarget" class="agent-progress-target">{{ msg.agent.agentTarget }}</div>
+            <div class="agent-progress-text markdown-body" v-html="renderMarkdown(msg.agent.progressText)"></div>
+          </div>
+          <div v-if="msg.content" class="msg-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
           <div v-if="msg.agent?.skillCalls?.length" class="agent-skill-list">
             <div v-for="call in msg.agent.skillCalls" :key="call.call_id || call.callId || call.skill_id || call.skillId" class="agent-skill-item">
               <div class="agent-skill-head">
@@ -456,6 +496,36 @@ function isWaitingPermission(call) {
 .msg-system .msg-content {
   background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
+}
+
+.agent-progress {
+  padding: 7px 8px;
+  border: 1px solid var(--el-color-warning-light-5);
+  border-radius: 6px;
+  background: var(--el-color-warning-light-9);
+}
+
+.agent-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.agent-progress-target {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.agent-progress-text {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--el-text-color-regular);
 }
 
 .agent-skill-list {

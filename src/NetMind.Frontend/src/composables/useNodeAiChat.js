@@ -60,6 +60,23 @@ function getSkillStatus(call) {
   return call?.execution?.status || '';
 }
 
+function buildDeniedMessage(rejectReason) {
+  const reason = rejectReason?.trim();
+  return reason ? `用户拒绝授权：${reason}` : '用户拒绝授权';
+}
+
+function isAgentProgressStatus(status) {
+  const normalized = `${status || ''}`.toLowerCase();
+  return Boolean(normalized) && normalized !== 'final' && normalized !== 'error';
+}
+
+function buildAgentProgressText(result) {
+  const text = result.reply || result.mainText || '';
+  if (text.trim()) return text;
+  if (result.agentTarget) return `正在处理：${result.agentTarget}`;
+  return 'Agent 正在推进任务。';
+}
+
 export function useNodeAiChat(initialMode = 'node') {
   const messages = ref([]);
   const inputText = ref('');
@@ -121,15 +138,17 @@ export function useNodeAiChat(initialMode = 'node') {
   }
 
   function applyChatResult(result) {
+    const isAgentProgress = isAgentMode(chatMode.value) && isAgentProgressStatus(result.status);
     const assistantMessage = {
       role: 'assistant',
-      content: result.reply || result.mainText || ''
+      content: isAgentProgress ? '' : (result.reply || result.mainText || '')
     };
 
     if (result.skillCalls || result.status || result.agentTarget) {
       assistantMessage.agent = {
         status: result.status,
         agentTarget: result.agentTarget,
+        progressText: isAgentProgress ? buildAgentProgressText(result) : '',
         skillCalls: result.skillCalls || []
       };
     }
@@ -151,9 +170,10 @@ export function useNodeAiChat(initialMode = 'node') {
     lastResult.value = result;
   }
 
-  function markSkillCallDecision(call, approved) {
+  function markSkillCallDecision(call, approved, rejectReason = '') {
     const callId = getCallId(call);
     if (!callId) return;
+    const deniedMessage = buildDeniedMessage(rejectReason);
 
     messages.value = messages.value.map((message) => {
       if (!message.agent?.skillCalls?.length) return message;
@@ -169,13 +189,15 @@ export function useNodeAiChat(initialMode = 'node') {
               ...skillCall,
               permission: {
                 ...(skillCall.permission || {}),
-                approved
+                approved,
+                ...(approved || !rejectReason?.trim() ? {} : { reject_reason: rejectReason.trim() })
               },
               execution: {
                 ...(skillCall.execution || {}),
                 status: approved ? 'permission_approved' : 'permission_denied',
                 success: approved ? null : false,
-                error: approved ? skillCall.execution?.error ?? null : '用户拒绝授权'
+                ...(approved || !rejectReason?.trim() ? {} : { denied_reason: rejectReason.trim() }),
+                error: approved ? skillCall.execution?.error ?? null : deniedMessage
               }
             };
           })
@@ -195,7 +217,6 @@ export function useNodeAiChat(initialMode = 'node') {
       apiKey: modelConfig.apiKey || null,
       maxContextLength: maxContextLength.value,
       agentBuildPath: loadAgentBuildPath(),
-      domainAndSkillBinding: 'default',
       agentContext: agentContext.value,
       historySkillCalls: historySkillCalls.value,
       confirmedSkillCalls
@@ -301,23 +322,34 @@ export function useNodeAiChat(initialMode = 'node') {
     }
   }
 
-  async function confirmSkillCall(call, approved, node, mapId) {
+  async function confirmSkillCall(call, approved, node, mapId, rejectReason = '') {
     if (!isAgentMode(chatMode.value) || loading.value) return;
     if (requiresNode(chatMode.value) && !node) return;
     if (requiresMap(chatMode.value) && !mapId) return;
     if (getSkillStatus(call) !== 'waiting_permission') return;
 
     loading.value = true;
-    markSkillCallDecision(call, approved);
+    markSkillCallDecision(call, approved, rejectReason);
     refreshMaxContextLength();
 
     const skillName = getSkillName(call);
+    const reasonText = rejectReason?.trim();
     messages.value.push({
       role: 'system',
-      content: approved ? `已允许执行：${skillName}` : `已拒绝执行：${skillName}`
+      content: approved
+        ? `已允许执行：${skillName}`
+        : `已拒绝执行：${skillName}${reasonText ? `\n原因：${reasonText}` : ''}`
     });
 
     const modelConfig = getGlobalModelConfig();
+    const confirmedSkillCall = {
+      call_id: getCallId(call),
+      approved
+    };
+    if (!approved && reasonText) {
+      confirmedSkillCall.reject_reason = reasonText;
+    }
+
     try {
       const result = await api(getAgentEndpoint(chatMode.value), {
         method: 'POST',
@@ -326,9 +358,11 @@ export function useNodeAiChat(initialMode = 'node') {
           mapId,
           message: approved
             ? '用户已允许执行上一轮 Agent Skill，请继续完成任务。'
-            : '用户拒绝执行上一轮 Agent Skill，请在不执行该 Skill 的前提下继续回复。',
+            : reasonText
+              ? `用户拒绝执行上一轮 Agent Skill，拒绝原因：${reasonText}。请在不执行该 Skill 的前提下继续回复。`
+              : '用户拒绝执行上一轮 Agent Skill，请在不执行该 Skill 的前提下继续回复。',
           modelConfig,
-          confirmedSkillCalls: [{ call_id: getCallId(call), approved }]
+          confirmedSkillCalls: [confirmedSkillCall]
         }))
       });
 

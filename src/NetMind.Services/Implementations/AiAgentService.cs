@@ -13,6 +13,8 @@ namespace NetMind.Services.Implementations;
 
 public sealed class AiAgentService : IAiAgentService
 {
+    private const string DefaultDomainAndSkillBinding = "netmind";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -136,9 +138,7 @@ public sealed class AiAgentService : IAiAgentService
         {
             SelectedModel = ToDto(selectedModel),
             Prompt = promptForLog,
-            Reply = string.IsNullOrWhiteSpace(kernelResponse.MainText)
-                ? kernelResponse.Error ?? "Agent 未返回正文。"
-                : kernelResponse.MainText,
+            Reply = BuildAgentReply(kernelResponse),
             Status = kernelResponse.Status,
             AgentTarget = kernelResponse.AgentTarget,
             SkillCalls = CloneElements(kernelResponse.SkillCalls),
@@ -151,6 +151,23 @@ public sealed class AiAgentService : IAiAgentService
         };
     }
 
+    private static string BuildAgentReply(AgentKernelResponse kernelResponse)
+    {
+        if (!string.IsNullOrWhiteSpace(kernelResponse.MainText))
+        {
+            return kernelResponse.MainText;
+        }
+
+        if (kernelResponse.Status.Equals("error", StringComparison.OrdinalIgnoreCase))
+        {
+            return kernelResponse.Error ?? "Agent 执行失败。";
+        }
+
+        return kernelResponse.Status.Equals("final", StringComparison.OrdinalIgnoreCase)
+            ? "Agent 未返回正文。"
+            : string.Empty;
+    }
+
     private Dictionary<string, object?> BuildKernelRequest(
         AiAgentChatRequest request,
         AiAgentScenarioOptions scenario,
@@ -158,9 +175,8 @@ public sealed class AiAgentService : IAiAgentService
         Dictionary<string, object?> agentContext,
         string conversationPrefix)
     {
-        var domain = string.IsNullOrWhiteSpace(request.DomainAndSkillBinding)
-            ? scenario.DomainAndSkillBinding
-            : request.DomainAndSkillBinding.Trim();
+        var domain = ResolveDomainAndSkillBinding(request.DomainAndSkillBinding, scenario.DomainAndSkillBinding);
+        ApplyDomainAndSkillBinding(agentContext, domain);
 
         var userText = string.IsNullOrWhiteSpace(request.Message)
             ? "用户已处理上一轮 Agent Skill 权限，请继续完成任务。"
@@ -172,13 +188,13 @@ public sealed class AiAgentService : IAiAgentService
                 ? $"{conversationPrefix}-{Guid.NewGuid():N}"
                 : request.ConversationId,
             ["user_text"] = userText,
-            ["domain_and_skill_binding"] = string.IsNullOrWhiteSpace(domain) ? "default" : domain,
+            ["domain_and_skill_binding"] = domain,
             ["identity"] = JoinLines(scenario.IdentityLines, "你是 NetMind 的节点问答 Agent。"),
             ["cues"] = JoinLines(scenario.CuesLines, "使用中文，围绕当前节点上下文回答。"),
             ["model_config"] = modelConfig,
             ["context"] = agentContext,
             ["skill_runtime"] = BuildSkillRuntime(),
-            ["confirmed_skill_calls"] = CloneElements(request.ConfirmedSkillCalls),
+            ["confirmed_skill_calls"] = NormalizeConfirmedSkillCalls(request.ConfirmedSkillCalls),
             ["history_skill_calls"] = CloneElements(request.HistorySkillCalls)
         };
     }
@@ -192,37 +208,6 @@ public sealed class AiAgentService : IAiAgentService
             {
                 ["timeout_seconds"] = Math.Max(_agentOptions.SkillRuntimeTimeoutSeconds, 1)
             },
-            ["skills"] = new Dictionary<string, object?>
-            {
-                ["search_nodes"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/nodes/search"
-                },
-                ["list_map_nodes"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/nodes/by-map/{mapId}"
-                },
-                ["get_node"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/nodes/{id}"
-                },
-                ["list_map_relations"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/node-relations/by-map/{mapId}"
-                },
-                ["list_node_relations"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/node-relations/by-node/{nodeId}"
-                },
-                ["list_mind_maps"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/mind-maps"
-                },
-                ["get_mind_map"] = new Dictionary<string, object?>
-                {
-                    ["endpoint"] = "/api/mind-maps/{id}"
-                }
-            }
         };
     }
 
@@ -440,7 +425,6 @@ public sealed class AiAgentService : IAiAgentService
         return new Dictionary<string, object?>
         {
             ["mode"] = "node-question-agent",
-            ["domain_and_skill_binding"] = "default",
             ["current_node"] = NodeToFocusDto(node),
             ["parent_chain"] = parentChain,
             ["children"] = children,
@@ -482,7 +466,6 @@ public sealed class AiAgentService : IAiAgentService
         return new Dictionary<string, object?>
         {
             ["mode"] = "map-question-agent",
-            ["domain_and_skill_binding"] = "default",
             ["map"] = new Dictionary<string, object?>
             {
                 ["id"] = map.Id,
@@ -517,7 +500,6 @@ public sealed class AiAgentService : IAiAgentService
         return new Dictionary<string, object?>
         {
             ["mode"] = "global-question-agent",
-            ["domain_and_skill_binding"] = "default",
             ["base_info"] = new Dictionary<string, object?>
             {
                 ["product_name"] = "NetMind",
@@ -559,6 +541,87 @@ public sealed class AiAgentService : IAiAgentService
             ["working_memory"] = workingMemory,
             ["focus_context"] = focusContext
         };
+    }
+
+    private static string ResolveDomainAndSkillBinding(string? requestDomain, string? scenarioDomain)
+    {
+        var domain = string.IsNullOrWhiteSpace(requestDomain)
+            ? scenarioDomain
+            : requestDomain.Trim();
+
+        return string.IsNullOrWhiteSpace(domain) ? DefaultDomainAndSkillBinding : domain.Trim();
+    }
+
+    private static void ApplyDomainAndSkillBinding(Dictionary<string, object?> agentContext, string domain)
+    {
+        if (agentContext.TryGetValue("focus_context", out var focusContextValue) &&
+            focusContextValue is Dictionary<string, object?> focusContext)
+        {
+            focusContext["domain_and_skill_binding"] = domain;
+        }
+    }
+
+    private static IReadOnlyList<object?> NormalizeConfirmedSkillCalls(IReadOnlyList<JsonElement>? values)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return Array.Empty<object?>();
+        }
+
+        return values.Select(NormalizeConfirmedSkillCall).ToList();
+    }
+
+    private static object? NormalizeConfirmedSkillCall(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            return value.Clone();
+        }
+
+        var item = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var property in value.EnumerateObject())
+        {
+            item[property.Name] = property.Value.Clone();
+        }
+
+        if (IsApprovedFalse(value) && !HasStringProperty(value, "reject_reason"))
+        {
+            var rejectReason = ReadFirstStringProperty(value, "denied_reason", "deny_reason", "reason");
+            if (!string.IsNullOrWhiteSpace(rejectReason))
+            {
+                item["reject_reason"] = rejectReason;
+            }
+        }
+
+        return item;
+    }
+
+    private static bool IsApprovedFalse(JsonElement value)
+    {
+        return value.TryGetProperty("approved", out var approved) &&
+            approved.ValueKind == JsonValueKind.False;
+    }
+
+    private static bool HasStringProperty(JsonElement value, string propertyName)
+    {
+        return value.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(property.GetString());
+    }
+
+    private static string? ReadFirstStringProperty(JsonElement value, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (value.TryGetProperty(propertyName, out var property) &&
+                property.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(property.GetString()))
+            {
+                return property.GetString();
+            }
+        }
+
+        return null;
     }
 
     private string ResolveAgentBuildRoot(string? requestPath)

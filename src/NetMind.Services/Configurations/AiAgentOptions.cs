@@ -27,7 +27,7 @@ public sealed class AiAgentOptions
 
 public sealed class AiAgentScenarioOptions
 {
-    public string DomainAndSkillBinding { get; init; } = "default";
+    public string DomainAndSkillBinding { get; init; } = "netmind";
 
     public IReadOnlyList<string> IdentityLines { get; init; } = Array.Empty<string>();
 
