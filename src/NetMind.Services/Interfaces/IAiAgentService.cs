@@ -9,4 +9,6 @@ public interface IAiAgentService
     Task<AiAgentChatResult> ChatWithMapAgentAsync(AiMapAgentChatRequest request);
 
     Task<AiAgentChatResult> ChatWithGlobalAgentAsync(AiGlobalAgentChatRequest request);
+
+    Task<AiAgentChatResult> ChatWithAppHelpAgentAsync(AiAppHelpAgentChatRequest request);
 }

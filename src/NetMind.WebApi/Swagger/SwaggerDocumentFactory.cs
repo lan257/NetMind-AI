@@ -38,6 +38,7 @@ internal static class SwaggerDocumentFactory
                 ["/api/ai/map-chat"] = Path("基于当前思维导图全量结构问答", "post"),
                 ["/api/ai/map-agent-chat"] = Path("调用 AgentBuild 进行全图问答 Agent 对话", "post"),
                 ["/api/ai/global-agent-chat"] = Path("调用 AgentBuild 进行全局问答 Agent 对话", "post"),
+                ["/api/ai/app-help-agent-chat"] = Path("调用 AgentBuild 进行应用帮助 Agent 对话", "post"),
                 ["/api/ai/app-help-chat"] = Path("基于应用帮助文档问答", "post"),
                 ["/api/ai-conversation-records"] = Path("查询和创建 AI 对话记录", "get", "post"),
                 ["/api/ai-conversation-records/{id}"] = Path("查询、更新和逻辑删除单条 AI 对话记录", "get", "put", "delete"),

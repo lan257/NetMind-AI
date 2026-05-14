@@ -341,7 +341,7 @@ watch(() => props.modelValue, async (val) => {
           <h3>AgentBuild 脚本设置</h3>
         </div>
         <p class="helper-text">
-          配置 AgentBuild 根目录。节点问答（Agent）会调用该目录下的 <code>src/agent_kernel.py</code>。
+          配置 AgentBuild 根目录。AI Agent 功能会调用该目录下的 <code>src/agent_kernel.py</code>。
         </p>
         <el-input
           :model-value="agentBuildPath"

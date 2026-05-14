@@ -15,15 +15,13 @@ const chat = useNodeAiChat();
 const collapsed = ref(true);
 
 const chatModes = [
-  { value: 'node', label: '节点问答（聊天）', icon: ChatDotRound, available: true },
-  { value: 'node-agent', label: '节点问答（Agent）', icon: ChatDotRound, available: true },
-  { value: 'map', label: '全图问答（聊天）', icon: ChatDotRound, available: true },
-  { value: 'map-agent', label: '全图问答（Agent）', icon: ChatDotRound, available: true },
-  { value: 'global', label: '全局问答（Agent）', icon: ChatDotRound, available: true },
+  { value: 'node-agent', label: '节点问答', icon: ChatDotRound, available: true },
+  { value: 'map-agent', label: '全图问答', icon: ChatDotRound, available: true },
+  { value: 'global', label: '全局问答', icon: ChatDotRound, available: true },
   { value: 'app-help', label: '应用帮助', icon: ChatDotRound, available: true }
 ];
 
-const APP_HELP_INTRO = '你好！我是 NetMind 应用帮助助手。我可以帮你了解如何使用 NetMind 的各项功能，包括思维导图管理、节点编辑、AI 功能、导入导出、界面操作等。请随时向我提问！';
+const APP_HELP_INTRO = '你好！我是 NetMind 应用帮助 Agent。我可以帮你了解功能、操作、部署和排障；对话中学到的新经验会追加到学习记录，正式说明书由管理员统一维护。';
 
 const chatContainer = ref(null);
 
@@ -55,11 +53,11 @@ function selectMode(mode) {
 }
 
 function requiresNodeMode(mode) {
-  return mode === 'node' || mode === 'node-agent';
+  return mode === 'node-agent';
 }
 
 function requiresMapMode(mode) {
-  return mode === 'map' || mode === 'map-agent';
+  return mode === 'map-agent';
 }
 
 const inputDisabled = computed(() => {
@@ -110,7 +108,7 @@ function handleKeyup(event) {
 
 // Clear chat when node changes (only in node mode)
 watch(() => props.node?.id, () => {
-  if (chat.chatMode.value === 'node' || chat.chatMode.value === 'node-agent') {
+  if (chat.chatMode.value === 'node-agent') {
     chat.clearChat();
   }
 });
@@ -230,36 +228,24 @@ function isWaitingPermission(call) {
       <!-- Messages -->
       <div class="chat-messages" ref="chatContainer">
         <div v-if="chat.messages.value.length === 0" class="chat-empty">
-          <!-- Node chat mode -->
-          <template v-if="chat.chatMode.value === 'node'">
-            <p>AI 节点聚焦助手</p>
-            <p class="chat-empty-hint">针对当前选中节点进行问答或内容完善</p>
-            <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
-          </template>
-          <template v-else-if="chat.chatMode.value === 'node-agent'">
-            <p>节点问答 Agent</p>
+          <template v-if="chat.chatMode.value === 'node-agent'">
+            <p>节点问答/p>
             <p class="chat-empty-hint">通过 AgentBuild 内核进行节点问答和 Skill 调用</p>
             <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
           </template>
-          <!-- Map chat mode -->
-          <template v-else-if="chat.chatMode.value === 'map'">
-            <p>AI 全图问答助手</p>
-            <p class="chat-empty-hint">针对当前思维导图的整体结构进行问答和分析</p>
-            <p class="chat-empty-hint" v-if="!currentMapId">请先在侧边栏选择一个思维导图</p>
-          </template>
           <template v-else-if="chat.chatMode.value === 'map-agent'">
-            <p>全图问答 Agent</p>
+            <p>全图问答</p>
             <p class="chat-empty-hint">通过 AgentBuild 内核读取当前导图全量数据并回答</p>
             <p class="chat-empty-hint" v-if="!currentMapId">请先在侧边栏选择一个思维导图</p>
           </template>
           <template v-else-if="chat.chatMode.value === 'global'">
-            <p>全局问答 Agent</p>
+            <p>全局问答</p>
             <p class="chat-empty-hint">仅基于基础信息、对话历史和 Agent 记忆回答</p>
           </template>
           <!-- App help mode -->
           <template v-else-if="chat.chatMode.value === 'app-help'">
-            <p>应用帮助助手</p>
-            <p class="chat-empty-hint">关于 NetMind 功能与操作的问题，随时问我</p>
+            <p>应用帮助 Agent</p>
+            <p class="chat-empty-hint">回答使用问题，并把经验追加到学习记录</p>
           </template>
           <!-- Other placeholder modes -->
           <template v-else>

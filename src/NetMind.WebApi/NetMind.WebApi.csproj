@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <Content Include="Config\AiCleanPrompts\*.prompt.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Config\AiCleanPrompts\app-help-learning-log.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

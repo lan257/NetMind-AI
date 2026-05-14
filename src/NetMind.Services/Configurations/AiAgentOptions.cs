@@ -23,6 +23,8 @@ public sealed class AiAgentOptions
     public AiAgentScenarioOptions MapQuestion { get; init; } = new();
 
     public AiAgentScenarioOptions GlobalQuestion { get; init; } = new();
+
+    public AiAgentScenarioOptions AppHelp { get; init; } = new();
 }
 
 public sealed class AiAgentScenarioOptions

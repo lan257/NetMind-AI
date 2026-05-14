@@ -17,6 +17,17 @@ P5.1 在 P5.0 节点问答 Agent 的基础上，继续接入六种聊天方式�
 - **服务 BaseUrl**：`App:BaseUrl` 同时用于 WebAPI 默认监听地址和 Agent Skill runtime 的 `netmind_api_base_url`。
 - **Python 执行器**：默认仍读取 `AiAgent:PythonExecutable`，当前配置为 `py`；若本机 Windows Python Launcher 无法发现 Python，可改为本机 `python.exe` 的绝对路径。
 
+## P5.3 新增：应用帮助 Agent 与入口收束
+
+P5.3 删除前端 AI 浮窗中的「节点问答（聊天）」和「全图问答（聊天）」入口，保留节点问答 Agent、全图问答 Agent、全局问答 Agent 和应用帮助。普通聊天后端端点暂保留兼容，但产品入口转向 Agent。
+
+- **应用帮助入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「应用帮助」。
+- **应用帮助 Agent 端点**：`POST /api/ai/app-help-agent-chat`。
+- **说明书传递方式**：后端不再把 `directions-help.prompt.md` 原文放入请求上下文，只在 `context.focus_context.manual_absolute_path` 中传入说明书绝对路径，且说明书只读。
+- **学习记录传递方式**：后端在 `context.focus_context.learning_log_absolute_path` 中传入应用帮助学习记录绝对路径。
+- **持续学习约束**：应用帮助 Agent 可以在对话中学习稳定的软件操作、限制和排障步骤，但只能向学习记录文档追加增量内容，不允许删除、覆盖、重排或改写已有经验；正式说明书由管理员统一筛选维护。
+- **新增 Prompt 文件**：`app-help-agent-identity.prompt.md`、`app-help-agent-cues.prompt.md`。
+
 ## P5.0 新增：AgentBuild 节点问答 Agent
 
 P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核脚本。普通节点聊天仍走 NetMind 后端内置 Prompt；Agent 模式由后端调用 AgentBuild 的 `src.agent_kernel`，并把当前节点上下文、模型配置、Skill 权限记录和历史上下文传入内核。
@@ -50,7 +61,9 @@ P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核�
       "MapIdentity": "Config/AiCleanPrompts/map-agent-identity.prompt.md",
       "MapCues": "Config/AiCleanPrompts/map-agent-cues.prompt.md",
       "GlobalIdentity": "Config/AiCleanPrompts/global-agent-identity.prompt.md",
-      "GlobalCues": "Config/AiCleanPrompts/global-agent-cues.prompt.md"
+      "GlobalCues": "Config/AiCleanPrompts/global-agent-cues.prompt.md",
+      "AppHelpIdentity": "Config/AiCleanPrompts/app-help-agent-identity.prompt.md",
+      "AppHelpCues": "Config/AiCleanPrompts/app-help-agent-cues.prompt.md"
     }
   }
 }
@@ -154,6 +167,9 @@ P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettin
 | `MapCues` | `map-agent-cues.prompt.md` | 全图问答 Agent 补充提示。 |
 | `GlobalIdentity` | `global-agent-identity.prompt.md` | 全局问答 Agent 身份提示。 |
 | `GlobalCues` | `global-agent-cues.prompt.md` | 全局问答 Agent 补充提示。 |
+| `AppHelpIdentity` | `app-help-agent-identity.prompt.md` | 应用帮助 Agent 身份提示。 |
+| `AppHelpCues` | `app-help-agent-cues.prompt.md` | 应用帮助 Agent 补充提示。 |
+| `AppHelpLearning` | `app-help-learning-log.md` | 应用帮助 Agent 学习记录，只允许追加增量经验。 |
 
 Prompt 文件会随 `NetMind.WebApi` 构建复制到输出目录。发布包如果直接运行，也需要保留 `Config/AiCleanPrompts/` 目录。
 

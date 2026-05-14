@@ -55,4 +55,8 @@ public sealed class AiPromptOptions
     public IReadOnlyList<string> AppHelpPromptTemplateLines { get; init; } = Array.Empty<string>();
 
     public IReadOnlyList<string> AppManualLines { get; init; } = Array.Empty<string>();
+
+    public string AppManualPath { get; init; } = string.Empty;
+
+    public string AppHelpLearningPath { get; init; } = string.Empty;
 }

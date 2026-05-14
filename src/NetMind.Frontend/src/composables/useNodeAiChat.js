@@ -31,20 +31,21 @@ function loadAgentBuildPath() {
 }
 
 function isAgentMode(mode) {
-  return mode === 'node-agent' || mode === 'map-agent' || mode === 'global';
+  return mode === 'node-agent' || mode === 'map-agent' || mode === 'global' || mode === 'app-help';
 }
 
 function requiresNode(mode) {
-  return mode === 'node' || mode === 'node-agent';
+  return mode === 'node-agent';
 }
 
 function requiresMap(mode) {
-  return mode === 'map' || mode === 'map-agent';
+  return mode === 'map-agent';
 }
 
 function getAgentEndpoint(mode) {
   if (mode === 'map-agent') return '/api/ai/map-agent-chat';
   if (mode === 'global') return '/api/ai/global-agent-chat';
+  if (mode === 'app-help') return '/api/ai/app-help-agent-chat';
   return '/api/ai/node-agent-chat';
 }
 
@@ -77,7 +78,7 @@ function buildAgentProgressText(result) {
   return 'Agent 正在推进任务。';
 }
 
-export function useNodeAiChat(initialMode = 'node') {
+export function useNodeAiChat(initialMode = 'node-agent') {
   const messages = ref([]);
   const inputText = ref('');
   const loading = ref(false);
@@ -93,11 +94,10 @@ export function useNodeAiChat(initialMode = 'node') {
 
   function conversationPrefix() {
     if (chatMode.value === 'app-help') return 'help';
-    if (chatMode.value === 'map') return 'map';
     if (chatMode.value === 'map-agent') return 'map-agent';
     if (chatMode.value === 'node-agent') return 'node-agent';
     if (chatMode.value === 'global') return 'global';
-    return 'node';
+    return 'node-agent';
   }
   const conversationId = ref(createConversationId(conversationPrefix()));
 
@@ -264,31 +264,6 @@ export function useNodeAiChat(initialMode = 'node') {
           modelConfig,
           confirmedSkillCalls: []
         });
-      } else if (chatMode.value === 'app-help') {
-        endpoint = '/api/ai/app-help-chat';
-        body = {
-          message: text,
-          context: getContextText(),
-          conversationId: conversationId.value,
-          modelId: modelConfig.modelId || null,
-          endpoint: modelConfig.endpoint || null,
-          provider: modelConfig.provider || null,
-          apiKey: modelConfig.apiKey || null,
-          maxContextLength: maxContextLength.value
-        };
-      } else if (chatMode.value === 'map') {
-        endpoint = '/api/ai/map-chat';
-        body = {
-          mapId: Number(mapId),
-          message: text,
-          context: getContextText(),
-          conversationId: conversationId.value,
-          modelId: modelConfig.modelId || null,
-          endpoint: modelConfig.endpoint || null,
-          provider: modelConfig.provider || null,
-          apiKey: modelConfig.apiKey || null,
-          maxContextLength: maxContextLength.value
-        };
       } else {
         endpoint = '/api/ai/node-chat';
         body = {

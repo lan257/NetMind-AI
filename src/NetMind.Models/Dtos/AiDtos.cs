@@ -173,6 +173,10 @@ public sealed class AiGlobalAgentChatRequest : AiAgentChatRequest
 {
 }
 
+public sealed class AiAppHelpAgentChatRequest : AiAgentChatRequest
+{
+}
+
 public sealed class AiAgentChatResult
 {
     public AiModelOptionDto SelectedModel { get; init; } = new();

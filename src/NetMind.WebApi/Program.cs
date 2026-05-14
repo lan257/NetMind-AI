@@ -225,7 +225,9 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
             NodeChatCompressionPromptTemplateLines = ReadPromptLines(promptSection, "NodeChatCompression", "NodeChatCompressionPromptTemplateLines", contentRootPath),
             MapChatPromptTemplateLines = ReadPromptLines(promptSection, "MapChat", "MapChatPromptTemplateLines", contentRootPath),
             AppHelpPromptTemplateLines = ReadPromptLines(promptSection, "AppHelp", "AppHelpPromptTemplateLines", contentRootPath),
-            AppManualLines = ReadPromptLines(promptSection, "AppManual", "AppManualLines", contentRootPath)
+            AppManualLines = ReadPromptLines(promptSection, "AppManual", "AppManualLines", contentRootPath),
+            AppManualPath = ResolveOptionalPromptFilePath(promptSection, "AppManual", contentRootPath),
+            AppHelpLearningPath = ResolveOptionalPromptFilePath(promptSection, "AppHelpLearning", contentRootPath)
         }
     };
 }
@@ -257,6 +259,11 @@ static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration, string co
             section,
             "GlobalIdentity",
             "GlobalCues",
+            contentRootPath),
+        AppHelp = ReadAiAgentScenarioOptions(
+            section,
+            "AppHelpIdentity",
+            "AppHelpCues",
             contentRootPath)
     };
 }
@@ -332,6 +339,17 @@ static string ResolvePromptFilePath(string contentRootPath, string promptFile)
     }
 
     return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, promptFile));
+}
+
+static string ResolveOptionalPromptFilePath(
+    IConfigurationSection promptSection,
+    string fileKey,
+    string contentRootPath)
+{
+    var promptFile = promptSection.GetSection("PromptFiles")[fileKey];
+    return string.IsNullOrWhiteSpace(promptFile)
+        ? string.Empty
+        : ResolvePromptFilePath(contentRootPath, promptFile);
 }
 
 static bool ReadBool(string? value)

@@ -95,6 +95,16 @@ public sealed class AiAgentService : IAiAgentService
                 Task.FromResult(BuildGlobalFocusContext(chatHistory, maxLength, usagePercent, contextStatus)));
     }
 
+    public async Task<AiAgentChatResult> ChatWithAppHelpAgentAsync(AiAppHelpAgentChatRequest request)
+    {
+        return await ChatWithAgentAsync(
+            request,
+            _agentOptions.AppHelp,
+            "help-agent",
+            (chatHistory, maxLength, usagePercent, contextStatus) =>
+                Task.FromResult(BuildAppHelpFocusContext(chatHistory, maxLength, usagePercent, contextStatus)));
+    }
+
     private async Task<AiAgentChatResult> ChatWithAgentAsync(
         AiAgentChatRequest request,
         AiAgentScenarioOptions scenario,
@@ -507,6 +517,43 @@ public sealed class AiAgentService : IAiAgentService
                 ["agent_scope"] = "全局问答 Agent 仅接收用户问题、对话历史、Agent 记忆和基础应用信息。",
                 ["data_scope"] = "本模式不传递任何节点、关联关系或思维导图数据。"
             },
+            ["chat_history"] = string.IsNullOrWhiteSpace(chatHistory) ? "（无历史上下文）" : chatHistory,
+            ["context_budget"] = new Dictionary<string, object?>
+            {
+                ["max_context_length"] = maxLength,
+                ["usage_percent"] = usagePercent,
+                ["status"] = contextStatus
+            }
+        };
+    }
+
+    private Dictionary<string, object?> BuildAppHelpFocusContext(
+        string chatHistory,
+        int maxLength,
+        double usagePercent,
+        string contextStatus)
+    {
+        var manualPath = string.IsNullOrWhiteSpace(_aiOptions.Prompt.AppManualPath)
+            ? "应用帮助说明书路径未配置。"
+            : _aiOptions.Prompt.AppManualPath;
+        var learningPath = string.IsNullOrWhiteSpace(_aiOptions.Prompt.AppHelpLearningPath)
+            ? "应用帮助学习记录路径未配置。"
+            : _aiOptions.Prompt.AppHelpLearningPath;
+
+        return new Dictionary<string, object?>
+        {
+            ["mode"] = "app-help-agent",
+            ["base_info"] = new Dictionary<string, object?>
+            {
+                ["product_name"] = "NetMind",
+                ["product_scope"] = "基于 AI 的知识网络构建与可视化工具。",
+                ["agent_scope"] = "应用帮助 Agent 负责解释软件功能、操作路径、部署配置和常见问题。",
+                ["data_scope"] = "本模式不默认传递节点、关联关系或思维导图业务数据。"
+            },
+            ["manual_absolute_path"] = manualPath,
+            ["manual_access_policy"] = "说明书是管理员维护的正式文档；Agent 只能读取说明书，不允许直接修改说明书原文。",
+            ["learning_log_absolute_path"] = learningPath,
+            ["learning_log_update_policy"] = "对话中学到稳定的软件操作、限制、排障步骤或说明缺口时，只能向学习记录追加增量内容；不允许删除、覆盖或重写已有学习经验。管理员后续统一筛选并维护正式说明书。",
             ["chat_history"] = string.IsNullOrWhiteSpace(chatHistory) ? "（无历史上下文）" : chatHistory,
             ["context_budget"] = new Dictionary<string, object?>
             {

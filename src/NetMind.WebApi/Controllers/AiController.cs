@@ -171,6 +171,22 @@ public sealed class AiController : ControllerBase
         }
     }
 
+    [HttpPost("app-help-agent-chat")]
+    public async Task<ActionResult<ApiResult<AiAgentChatResult>>> ChatWithAppHelpAgentAsync(AiAppHelpAgentChatRequest request)
+    {
+        try
+        {
+            var result = await _aiAgentService.ChatWithAppHelpAgentAsync(request);
+            await SaveAgentConversationAsync(request, result);
+
+            return ApiResult<AiAgentChatResult>.Ok(result);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException or TimeoutException)
+        {
+            return BadRequest(ApiResult<AiAgentChatResult>.Fail(ex.Message));
+        }
+    }
+
     [HttpPost("app-help-chat")]
     public async Task<ActionResult<ApiResult<AiAppHelpResult>>> ChatForAppHelpAsync(AiAppHelpRequest request)
     {
