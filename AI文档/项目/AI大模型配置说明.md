@@ -12,8 +12,9 @@ P5.1 在 P5.0 节点问答 Agent 的基础上，继续接入六种聊天方式�
 - **全局问答（Agent）入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「全局问答（Agent）」。
 - **全局问答（Agent）端点**：`POST /api/ai/global-agent-chat`。
 - **全局上下文范围**：只传递 NetMind 基础应用信息、对话历史、Agent 记忆和上下文预算，不传递任何节点、关联或思维导图数据。
-- **Prompt/身份配置**：新增 `AiAgent:MapQuestion` 和 `AiAgent:GlobalQuestion`，与 `NodeQuestion` 一样写在 `appsettings*.json` 中。
+- **Prompt/身份配置**：Agent 身份和补充提示已迁移到 `src/NetMind.WebApi/Config/AiCleanPrompts/*-agent-*.prompt.md`，`appsettings*.json` 只保存 Prompt 文件路径。
 - **AgentBuild 参数适配**：按 AgentBuild 当前接口规范，后端额外传入 `skill_runtime`。该字段不进入 Prompt，只会在 Kernel 执行 Skill 时注入到 `params.__runtime`，用于提供 NetMind WebAPI 地址、Skill 超时和 endpoint 映射。
+- **服务 BaseUrl**：`App:BaseUrl` 同时用于 WebAPI 默认监听地址和 Agent Skill runtime 的 `netmind_api_base_url`。
 - **Python 执行器**：默认仍读取 `AiAgent:PythonExecutable`，当前配置为 `py`；若本机 Windows Python Launcher 无法发现 Python，可改为本机 `python.exe` 的绝对路径。
 
 ## P5.0 新增：AgentBuild 节点问答 Agent
@@ -25,13 +26,16 @@ P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核�
 - **后端端点**：`POST /api/ai/node-agent-chat`。
 - **默认 Skill 绑定**：`domain_and_skill_binding=default`。
 - **模型配置来源**：沿用全局默认 AI 模型。后端把选中模型转换为 AgentBuild 的 `model_config`，包含 `model_name`、`api_url`、`api_key`、`temperature`、`max_tokens`、`timeout`、`max_retries` 和 JSON 输出格式。
-- **Prompt/身份配置**：Agent 身份和补充提示写在 `appsettings*.json` 的 `AiAgent:NodeQuestion` 中，不硬编码在业务代码内。
+- **Prompt/身份配置**：Agent 身份和补充提示写在 `Config/AiCleanPrompts` 的 Agent Prompt 文件中，不硬编码在业务代码内。
 - **权限交互**：AgentBuild 返回 `waiting_permission` 时，前端展示 Skill 权限确认按钮；用户允许或拒绝后，下一轮请求会带回 `confirmed_skill_calls` 与 `history_skill_calls`。
 
 新增后端配置：
 
 ```json
 {
+  "App": {
+    "BaseUrl": "http://127.0.0.1:5120"
+  },
   "AiAgent": {
     "AgentBuildPath": "G:\\AAW+\\NetMind\\AgentBuild",
     "PythonExecutable": "py",
@@ -39,22 +43,14 @@ P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核�
     "Temperature": 0.2,
     "MaxTokens": 4096,
     "MaxRetries": 2,
-    "NetMindApiBaseUrl": "http://127.0.0.1:5120",
     "SkillRuntimeTimeoutSeconds": 10,
-    "NodeQuestion": {
-      "DomainAndSkillBinding": "default",
-      "IdentityLines": [],
-      "CuesLines": []
-    },
-    "MapQuestion": {
-      "DomainAndSkillBinding": "default",
-      "IdentityLines": [],
-      "CuesLines": []
-    },
-    "GlobalQuestion": {
-      "DomainAndSkillBinding": "default",
-      "IdentityLines": [],
-      "CuesLines": []
+    "PromptFiles": {
+      "NodeIdentity": "Config/AiCleanPrompts/node-agent-identity.prompt.md",
+      "NodeCues": "Config/AiCleanPrompts/node-agent-cues.prompt.md",
+      "MapIdentity": "Config/AiCleanPrompts/map-agent-identity.prompt.md",
+      "MapCues": "Config/AiCleanPrompts/map-agent-cues.prompt.md",
+      "GlobalIdentity": "Config/AiCleanPrompts/global-agent-identity.prompt.md",
+      "GlobalCues": "Config/AiCleanPrompts/global-agent-cues.prompt.md"
     }
   }
 }
@@ -152,6 +148,12 @@ P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettin
 | `Requirement` | `requirement-structure.prompt.md` | 将不成熟需求结合上下文拆解为结构化导图。 |
 | `ContextChat` | `context-chat.prompt.md` | 需求澄清对话回复。 |
 | `ContextCompression` | `context-compression.prompt.md` | 长上下文压缩。 |
+| `NodeIdentity` | `node-agent-identity.prompt.md` | 节点问答 Agent 身份提示。 |
+| `NodeCues` | `node-agent-cues.prompt.md` | 节点问答 Agent 补充提示。 |
+| `MapIdentity` | `map-agent-identity.prompt.md` | 全图问答 Agent 身份提示。 |
+| `MapCues` | `map-agent-cues.prompt.md` | 全图问答 Agent 补充提示。 |
+| `GlobalIdentity` | `global-agent-identity.prompt.md` | 全局问答 Agent 身份提示。 |
+| `GlobalCues` | `global-agent-cues.prompt.md` | 全局问答 Agent 补充提示。 |
 
 Prompt 文件会随 `NetMind.WebApi` 构建复制到输出目录。发布包如果直接运行，也需要保留 `Config/AiCleanPrompts/` 目录。
 

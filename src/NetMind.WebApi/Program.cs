@@ -11,11 +11,13 @@ using NetMind.WebApi.Middleware;
 using NetMind.WebApi.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
+var appBaseUrl = builder.Configuration["App:BaseUrl"]
+    ?? throw new InvalidOperationException("必须配置 App:BaseUrl。");
 
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
     string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
 {
-    builder.WebHost.UseUrls("http://localhost:5120");
+    builder.WebHost.UseUrls(appBaseUrl);
 }
 
 builder.Services.AddControllers();
@@ -36,7 +38,7 @@ builder.Services.AddScoped<IAiConversationRecordService, AiConversationRecordSer
 builder.Services.AddScoped<IAiAgentService, AiAgentService>();
 builder.Services.AddHttpClient<IAiCleanService, AiCleanService>();
 builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration, builder.Environment.ContentRootPath));
-builder.Services.AddSingleton(LoadAiAgentOptions(builder.Configuration));
+builder.Services.AddSingleton(LoadAiAgentOptions(builder.Configuration, builder.Environment.ContentRootPath, appBaseUrl));
 
 var app = builder.Build();
 
@@ -228,12 +230,9 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
     };
 }
 
-static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration)
+static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration, string contentRootPath, string appBaseUrl)
 {
     var section = configuration.GetSection("AiAgent");
-    var nodeSection = section.GetSection("NodeQuestion");
-    var mapSection = section.GetSection("MapQuestion");
-    var globalSection = section.GetSection("GlobalQuestion");
     return new AiAgentOptions
     {
         AgentBuildPath = section["AgentBuildPath"] ?? @"G:\AAW+\NetMind\AgentBuild",
@@ -242,33 +241,37 @@ static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration)
         Temperature = ReadDouble(section["Temperature"], 0.2),
         MaxTokens = ReadInt(section["MaxTokens"], 4096),
         MaxRetries = ReadInt(section["MaxRetries"], 2),
-        NetMindApiBaseUrl = section["NetMindApiBaseUrl"] ?? "http://127.0.0.1:5120",
+        NetMindApiBaseUrl = appBaseUrl,
         SkillRuntimeTimeoutSeconds = ReadInt(section["SkillRuntimeTimeoutSeconds"], 10),
         NodeQuestion = ReadAiAgentScenarioOptions(
-            nodeSection,
-            "你是 NetMind 的节点问答 Agent。",
-            "使用中文，围绕当前节点上下文回答。"),
+            section,
+            "NodeIdentity",
+            "NodeCues",
+            contentRootPath),
         MapQuestion = ReadAiAgentScenarioOptions(
-            mapSection,
-            "你是 NetMind 的全图问答 Agent。",
-            "使用中文，围绕当前思维导图的全量结构和关联回答。"),
+            section,
+            "MapIdentity",
+            "MapCues",
+            contentRootPath),
         GlobalQuestion = ReadAiAgentScenarioOptions(
-            globalSection,
-            "你是 NetMind 的全局问答 Agent。",
-            "使用中文回答，不假设你拿到了节点或思维导图数据。")
+            section,
+            "GlobalIdentity",
+            "GlobalCues",
+            contentRootPath)
     };
 }
 
 static AiAgentScenarioOptions ReadAiAgentScenarioOptions(
     IConfigurationSection section,
-    string fallbackIdentity,
-    string fallbackCues)
+    string identityFileKey,
+    string cuesFileKey,
+    string contentRootPath)
 {
     return new AiAgentScenarioOptions
     {
-        DomainAndSkillBinding = section["DomainAndSkillBinding"] ?? "default",
-        IdentityLines = ReadConfigLines(section.GetSection("IdentityLines"), new[] { fallbackIdentity }),
-        CuesLines = ReadConfigLines(section.GetSection("CuesLines"), new[] { fallbackCues })
+        DomainAndSkillBinding = "default",
+        IdentityLines = ReadRequiredPromptFileLines(section, identityFileKey, contentRootPath),
+        CuesLines = ReadRequiredPromptFileLines(section, cuesFileKey, contentRootPath)
     };
 }
 
@@ -293,6 +296,26 @@ static IReadOnlyList<string> ReadPromptLines(
     return promptSection.GetSection(legacyLinesKey).GetChildren()
         .Select(section => section.Value ?? string.Empty)
         .ToList();
+}
+
+static IReadOnlyList<string> ReadRequiredPromptFileLines(
+    IConfigurationSection section,
+    string fileKey,
+    string contentRootPath)
+{
+    var promptFile = section.GetSection("PromptFiles")[fileKey];
+    if (string.IsNullOrWhiteSpace(promptFile))
+    {
+        throw new InvalidOperationException($"必须配置 AiAgent:PromptFiles:{fileKey}。");
+    }
+
+    var filePath = ResolvePromptFilePath(contentRootPath, promptFile);
+    if (!File.Exists(filePath))
+    {
+        throw new InvalidOperationException($"AI Prompt 文件不存在：{filePath}");
+    }
+
+    return File.ReadAllLines(filePath);
 }
 
 static string ResolvePromptFilePath(string contentRootPath, string promptFile)
@@ -324,13 +347,4 @@ static int ReadInt(string? value, int fallback)
 static double ReadDouble(string? value, double fallback)
 {
     return double.TryParse(value, out var result) ? result : fallback;
-}
-
-static IReadOnlyList<string> ReadConfigLines(IConfigurationSection section, IReadOnlyList<string> fallback)
-{
-    var lines = section.GetChildren()
-        .Select(child => child.Value ?? string.Empty)
-        .Where(line => !string.IsNullOrWhiteSpace(line))
-        .ToList();
-    return lines.Count > 0 ? lines : fallback;
 }
