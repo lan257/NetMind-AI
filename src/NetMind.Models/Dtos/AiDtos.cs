@@ -150,7 +150,7 @@ public class AiAgentChatRequest
 
     public string? AgentBuildPath { get; init; }
 
-    public string? DomainAndSkillBinding { get; init; }
+    public string? DomainAndSkillBinding { get; set; } = "netmind";
 
     public JsonElement? AgentContext { get; init; }
 

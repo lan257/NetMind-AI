@@ -276,7 +276,7 @@ static AiAgentScenarioOptions ReadAiAgentScenarioOptions(
 {
     return new AiAgentScenarioOptions
     {
-        DomainAndSkillBinding = "default",
+        DomainAndSkillBinding = "netmind",
         IdentityLines = ReadRequiredPromptFileLines(section, identityFileKey, contentRootPath),
         CuesLines = ReadRequiredPromptFileLines(section, cuesFileKey, contentRootPath)
     };

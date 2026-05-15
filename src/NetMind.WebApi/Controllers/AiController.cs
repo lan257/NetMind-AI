@@ -9,6 +9,8 @@ namespace NetMind.WebApi.Controllers;
 [Route("api/ai")]
 public sealed class AiController : ControllerBase
 {
+    private const string FixedAgentRoleMapping = "netmind";
+
     private readonly IAiCleanService _aiCleanService;
     private readonly IAiAgentService _aiAgentService;
     private readonly IAiConversationRecordService _conversationRecordService;
@@ -128,6 +130,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
+            ApplyFixedAgentRoleMapping(request);
             var result = await _aiAgentService.ChatWithNodeAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -144,6 +147,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
+            ApplyFixedAgentRoleMapping(request);
             var result = await _aiAgentService.ChatWithMapAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -160,6 +164,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
+            ApplyFixedAgentRoleMapping(request);
             var result = await _aiAgentService.ChatWithGlobalAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -176,6 +181,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
+            ApplyFixedAgentRoleMapping(request);
             var result = await _aiAgentService.ChatWithAppHelpAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -279,5 +285,10 @@ public sealed class AiController : ControllerBase
             Prompt = result.Prompt,
             WasContextCompressed = result.WasContextCompressed
         });
+    }
+
+    private static void ApplyFixedAgentRoleMapping(AiAgentChatRequest request)
+    {
+        request.DomainAndSkillBinding = FixedAgentRoleMapping;
     }
 }
