@@ -44,7 +44,7 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    StartFrontendDevServer(app);
+    StartFrontendDevServer(app, appBaseUrl);
 }
 
 app.UseMiddleware<ApiCallLoggingMiddleware>();
@@ -99,7 +99,7 @@ if (app.Environment.IsDevelopment())
 
 app.Run();
 
-static void StartFrontendDevServer(WebApplication app)
+static void StartFrontendDevServer(WebApplication app, string appBaseUrl)
 {
     const int frontendPort = 5173;
     if (IsFrontendDevServerRunning(frontendPort))
@@ -123,6 +123,7 @@ static void StartFrontendDevServer(WebApplication app)
     startInfo.RedirectStandardOutput = true;
     startInfo.RedirectStandardError = true;
     startInfo.CreateNoWindow = true;
+    startInfo.Environment["VITE_API_PROXY_TARGET"] = ResolveFrontendProxyTarget(app, appBaseUrl);
 
     try
     {
@@ -168,6 +169,20 @@ static void StartFrontendDevServer(WebApplication app)
     {
         app.Logger.LogWarning(ex, "Failed to start the frontend dev server.");
     }
+}
+
+static string ResolveFrontendProxyTarget(WebApplication app, string fallbackUrl)
+{
+    var configuredUrls = app.Configuration["urls"]
+        ?? app.Configuration["ASPNETCORE_URLS"]
+        ?? string.Empty;
+
+    var candidates = app.Urls
+        .Concat(configuredUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .Append(fallbackUrl);
+
+    return candidates.FirstOrDefault(url => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        ?? candidates.First();
 }
 
 static bool IsFrontendDevServerRunning(int port)

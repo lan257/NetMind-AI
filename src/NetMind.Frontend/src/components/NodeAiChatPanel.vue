@@ -229,7 +229,7 @@ function isWaitingPermission(call) {
       <div class="chat-messages" ref="chatContainer">
         <div v-if="chat.messages.value.length === 0" class="chat-empty">
           <template v-if="chat.chatMode.value === 'node-agent'">
-            <p>节点问答/p>
+            <p>节点问答</p>
             <p class="chat-empty-hint">通过 AgentBuild 内核进行节点问答和 Skill 调用</p>
             <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
           </template>
