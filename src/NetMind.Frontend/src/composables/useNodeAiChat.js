@@ -53,11 +53,19 @@ function getCallId(call) {
   return call?.call_id || call?.callId || '';
 }
 
-function getSkillName(call) {
-  return call?.skill_name || call?.skillName || call?.skill_id || call?.skillId || 'Skill';
+function getToolName(call) {
+  return call?.tool_name ||
+    call?.toolName ||
+    call?.tool_id ||
+    call?.toolId ||
+    call?.skill_name ||
+    call?.skillName ||
+    call?.skill_id ||
+    call?.skillId ||
+    '工具';
 }
 
-function getSkillStatus(call) {
+function getToolStatus(call) {
   return call?.execution?.status || '';
 }
 
@@ -86,7 +94,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
   const contextStatus = ref('comfortable');
   const compressedContext = ref('');
   const agentContext = ref(null);
-  const historySkillCalls = ref([]);
+  const historyToolCalls = ref([]);
   const lastResult = ref(null);
 
   const maxContextLength = ref(loadMaxContextLength());
@@ -139,17 +147,18 @@ export function useNodeAiChat(initialMode = 'node-agent') {
 
   function applyChatResult(result) {
     const isAgentProgress = isAgentMode(chatMode.value) && isAgentProgressStatus(result.status);
+    const toolCalls = result.toolCalls || result.skillCalls || [];
     const assistantMessage = {
       role: 'assistant',
       content: isAgentProgress ? '' : (result.reply || result.mainText || '')
     };
 
-    if (result.skillCalls || result.status || result.agentTarget) {
+    if (toolCalls.length || result.status || result.agentTarget) {
       assistantMessage.agent = {
         status: result.status,
         agentTarget: result.agentTarget,
         progressText: isAgentProgress ? buildAgentProgressText(result) : '',
-        skillCalls: result.skillCalls || []
+        toolCalls
       };
     }
 
@@ -164,40 +173,40 @@ export function useNodeAiChat(initialMode = 'node-agent') {
 
     if (isAgentMode(chatMode.value)) {
       agentContext.value = result.contextUpdate || null;
-      historySkillCalls.value = result.skillCalls || [];
+      historyToolCalls.value = toolCalls;
     }
 
     lastResult.value = result;
   }
 
-  function markSkillCallDecision(call, approved, rejectReason = '') {
+  function markToolCallDecision(call, approved, rejectReason = '') {
     const callId = getCallId(call);
     if (!callId) return;
     const deniedMessage = buildDeniedMessage(rejectReason);
 
     messages.value = messages.value.map((message) => {
-      if (!message.agent?.skillCalls?.length) return message;
+      if (!message.agent?.toolCalls?.length) return message;
 
       return {
         ...message,
         agent: {
           ...message.agent,
-          skillCalls: message.agent.skillCalls.map((skillCall) => {
-            if (getCallId(skillCall) !== callId) return skillCall;
+          toolCalls: message.agent.toolCalls.map((toolCall) => {
+            if (getCallId(toolCall) !== callId) return toolCall;
 
             return {
-              ...skillCall,
+              ...toolCall,
               permission: {
-                ...(skillCall.permission || {}),
+                ...(toolCall.permission || {}),
                 approved,
                 ...(approved || !rejectReason?.trim() ? {} : { reject_reason: rejectReason.trim() })
               },
               execution: {
-                ...(skillCall.execution || {}),
+                ...(toolCall.execution || {}),
                 status: approved ? 'permission_approved' : 'permission_denied',
                 success: approved ? null : false,
                 ...(approved || !rejectReason?.trim() ? {} : { denied_reason: rejectReason.trim() }),
-                error: approved ? skillCall.execution?.error ?? null : deniedMessage
+                error: approved ? toolCall.execution?.error ?? null : deniedMessage
               }
             };
           })
@@ -206,7 +215,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     });
   }
 
-  function buildAgentRequestBody({ node, mapId, message, modelConfig, confirmedSkillCalls = [] }) {
+  function buildAgentRequestBody({ node, mapId, message, modelConfig, confirmedToolCalls = [] }) {
     const body = {
       message,
       context: getContextText(),
@@ -218,8 +227,8 @@ export function useNodeAiChat(initialMode = 'node-agent') {
       maxContextLength: maxContextLength.value,
       agentBuildPath: loadAgentBuildPath(),
       agentContext: agentContext.value,
-      historySkillCalls: historySkillCalls.value,
-      confirmedSkillCalls
+      historyToolCalls: historyToolCalls.value,
+      confirmedToolCalls
     };
 
     if (chatMode.value === 'node-agent') {
@@ -262,7 +271,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
           mapId,
           message: text,
           modelConfig,
-          confirmedSkillCalls: []
+          confirmedToolCalls: []
         });
       } else {
         endpoint = '/api/ai/node-chat';
@@ -297,32 +306,32 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     }
   }
 
-  async function confirmSkillCall(call, approved, node, mapId, rejectReason = '') {
+  async function confirmToolCall(call, approved, node, mapId, rejectReason = '') {
     if (!isAgentMode(chatMode.value) || loading.value) return;
     if (requiresNode(chatMode.value) && !node) return;
     if (requiresMap(chatMode.value) && !mapId) return;
-    if (getSkillStatus(call) !== 'waiting_permission') return;
+    if (getToolStatus(call) !== 'waiting_permission') return;
 
     loading.value = true;
-    markSkillCallDecision(call, approved, rejectReason);
+    markToolCallDecision(call, approved, rejectReason);
     refreshMaxContextLength();
 
-    const skillName = getSkillName(call);
+    const toolName = getToolName(call);
     const reasonText = rejectReason?.trim();
     messages.value.push({
       role: 'system',
       content: approved
-        ? `已允许执行：${skillName}`
-        : `已拒绝执行：${skillName}${reasonText ? `\n原因：${reasonText}` : ''}`
+        ? `已允许执行：${toolName}`
+        : `已拒绝执行：${toolName}${reasonText ? `\n原因：${reasonText}` : ''}`
     });
 
     const modelConfig = getGlobalModelConfig();
-    const confirmedSkillCall = {
+    const confirmedToolCall = {
       call_id: getCallId(call),
       approved
     };
     if (!approved && reasonText) {
-      confirmedSkillCall.reject_reason = reasonText;
+      confirmedToolCall.reject_reason = reasonText;
     }
 
     try {
@@ -332,12 +341,12 @@ export function useNodeAiChat(initialMode = 'node-agent') {
           node,
           mapId,
           message: approved
-            ? '用户已允许执行上一轮 Agent Skill，请继续完成任务。'
+            ? '用户已允许执行上一轮 Agent 工具，请继续完成任务。'
             : reasonText
-              ? `用户拒绝执行上一轮 Agent Skill，拒绝原因：${reasonText}。请在不执行该 Skill 的前提下继续回复。`
-              : '用户拒绝执行上一轮 Agent Skill，请在不执行该 Skill 的前提下继续回复。',
+              ? `用户拒绝执行上一轮 Agent 工具，拒绝原因：${reasonText}。请在不执行该工具的前提下继续回复。`
+              : '用户拒绝执行上一轮 Agent 工具，请在不执行该工具的前提下继续回复。',
           modelConfig,
-          confirmedSkillCalls: [confirmedSkillCall]
+          confirmedToolCalls: [confirmedToolCall]
         }))
       });
 
@@ -358,7 +367,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     messages.value = [];
     compressedContext.value = '';
     agentContext.value = null;
-    historySkillCalls.value = [];
+    historyToolCalls.value = [];
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
@@ -428,7 +437,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     }));
     compressedContext.value = '';
     agentContext.value = null;
-    historySkillCalls.value = [];
+    historyToolCalls.value = [];
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
@@ -447,7 +456,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     maxContextLength,
     lastResult,
     agentContext,
-    historySkillCalls,
+    historyToolCalls,
     chatMode,
     conversationId,
     historyOpen,
@@ -455,7 +464,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     historyGroups,
     historyError,
     sendMessage,
-    confirmSkillCall,
+    confirmToolCall,
     clearChat,
     startNewConversation,
     loadHistory,

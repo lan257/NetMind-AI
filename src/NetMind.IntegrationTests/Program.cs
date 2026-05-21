@@ -5,6 +5,8 @@ using NetMind.Repository.Implementations;
 using NetMind.Repository.Interfaces;
 using NetMind.Services.Configurations;
 using NetMind.Services.Implementations;
+using System.Reflection;
+using System.Text.Json;
 
 // Stub repositories for AI configuration tests (no database needed)
 var stubNodeRepo = new StubNodeRepository();
@@ -88,6 +90,19 @@ Assert(aiModels.Count == 2, "AI model list should be read from configuration.");
 Assert(aiModels[0].Id == "deepseek-cloud" && aiModels[0].IsDefault, "Cloud DeepSeek should be the default AI cleaner.");
 Assert(aiModels.Any(model => model.Id == "ollama-local"), "Local Ollama fallback should be configured.");
 
+var aiAgentService = new AiAgentService(
+    new AiAgentOptions
+    {
+        NetMindApiBaseUrl = "http://127.0.0.1:5120/",
+        SkillRuntimeTimeoutSeconds = 9
+    },
+    new AiCleanOptions(),
+    null!,
+    stubNodeRepo,
+    stubRelationRepo,
+    NullAppLogger.Instance);
+AssertKernelV2RequestContract(aiAgentService);
+
 var connectionString = Environment.GetEnvironmentVariable("NETMIND_TEST_POSTGRES_CONNECTION");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -134,6 +149,80 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static void AssertKernelV2RequestContract(AiAgentService service)
+{
+    var buildRequest = typeof(AiAgentService).GetMethod(
+        "BuildKernelRequest",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+    Assert(buildRequest is not null, "Agent kernel request builder should be available for contract checks.");
+
+    var agentContext = new Dictionary<string, object?>
+    {
+        ["focus_context"] = new Dictionary<string, object?>()
+    };
+    var request = new AiAgentChatRequest
+    {
+        ConversationId = "contract-conversation",
+        Message = "继续执行",
+        Domain = "netmind",
+        ConfirmedToolCalls = new[] { Json("{\"call_id\":\"tool-call\",\"approved\":false,\"denied_reason\":\"no\"}") },
+        HistoryToolCalls = new[] { Json("{\"call_id\":\"tool-history\",\"tool_id\":\"node_get\"}") },
+        ConfirmedSkillCalls = new[] { Json("{\"call_id\":\"legacy-call\",\"approved\":true}") },
+        HistorySkillCalls = new[] { Json("{\"call_id\":\"legacy-history\",\"skill_id\":\"legacy\"}") }
+    };
+    var scenario = new AiAgentScenarioOptions
+    {
+        DomainAndSkillBinding = "scenario-domain",
+        IdentityLines = new[] { "contract identity" },
+        CuesLines = new[] { "contract cues" }
+    };
+    var modelConfig = new Dictionary<string, object?> { ["model_name"] = "fake" };
+
+    var rawResult = buildRequest!.Invoke(service, new object[]
+    {
+        request,
+        scenario,
+        modelConfig,
+        agentContext,
+        "contract-agent"
+    });
+    Assert(rawResult is Dictionary<string, object?>, "Agent kernel request builder should return a payload dictionary.");
+
+    var payload = (Dictionary<string, object?>)rawResult!;
+    Assert(payload["api_version"] as string == "v2", "Agent kernel requests should opt into API v2.");
+    Assert(payload["domain"] as string == "netmind", "Agent kernel requests should send the v2 domain field.");
+    Assert(!payload.ContainsKey("domain_and_skill_binding"), "Agent kernel requests should not send the v1 domain alias.");
+    Assert(payload.ContainsKey("tool_runtime"), "Agent kernel requests should send tool_runtime.");
+    Assert(!payload.ContainsKey("skill_runtime"), "Agent kernel requests should not send skill_runtime.");
+    Assert(payload.ContainsKey("confirmed_tool_calls"), "Agent kernel requests should send confirmed_tool_calls.");
+    Assert(!payload.ContainsKey("confirmed_skill_calls"), "Agent kernel requests should not send confirmed_skill_calls.");
+    Assert(payload.ContainsKey("history_tool_calls"), "Agent kernel requests should send history_tool_calls.");
+    Assert(!payload.ContainsKey("history_skill_calls"), "Agent kernel requests should not send history_skill_calls.");
+
+    var runtime = payload["tool_runtime"] as Dictionary<string, object?>;
+    Assert(runtime is not null, "tool_runtime should be an object.");
+    var sharedRuntime = runtime!["shared"] as Dictionary<string, object?>;
+    Assert(sharedRuntime is not null, "tool_runtime.shared should be an object.");
+    Assert(sharedRuntime!["netmind_api_base_url"] as string == "http://127.0.0.1:5120", "Tool runtime should normalize NetMind API base URL.");
+    Assert((int)sharedRuntime["timeout_seconds"]! == 9, "Tool runtime should carry timeout into shared runtime.");
+
+    var confirmedCalls = payload["confirmed_tool_calls"] as IReadOnlyList<object?>;
+    Assert(confirmedCalls?.Count == 1, "Tool confirmations should prefer the v2 request field.");
+    var confirmedCall = confirmedCalls![0] as Dictionary<string, object?>;
+    Assert(confirmedCall is not null && confirmedCall.ContainsKey("reject_reason"), "Denied tool confirmations should normalize reject_reason.");
+
+    var historyCalls = payload["history_tool_calls"] as IReadOnlyList<JsonElement>;
+    Assert(historyCalls?.Count == 1 && historyCalls[0].GetProperty("call_id").GetString() == "tool-history", "Tool history should prefer the v2 request field.");
+
+    var focusContext = agentContext["focus_context"] as Dictionary<string, object?>;
+    Assert(focusContext?["domain"] as string == "netmind", "Agent focus context should expose the v2 domain name.");
+}
+
+static JsonElement Json(string text)
+{
+    return JsonSerializer.Deserialize<JsonElement>(text);
 }
 
 internal sealed class StubNodeRepository : INodeRepository

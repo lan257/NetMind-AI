@@ -1,10 +1,19 @@
 # AI 大模型配置说明
 
-更新时间：2026-05-14
+更新时间：2026-05-21
+
+## P6.0 新增：Agent Kernel API v2 适配
+
+NetMind 调用外部 AgentBuild 内核时已切到 API v2，避免继续依赖旧 `skill_*` 协议。
+
+- **请求协议**：后端显式传入 `api_version=v2`，使用 `domain`、`tool_runtime`、`confirmed_tool_calls` 和 `history_tool_calls`。
+- **响应协议**：后端优先读取 `tool_calls`，并把 Tool 调用记录交给前端展示和续跑；旧 Skill 字段只保留 NetMind API 兼容入口。
+- **运行时配置**：NetMind WebAPI 地址和超时写入 `tool_runtime.shared`，由 AgentBuild 在执行 Tool 前注入 `params.__runtime`。
+- **Prompt 口径**：Agent 场景提示要求模型输出 `tool_call_drafts` / `tool_id`，不再提示旧 `skill_call_drafts`。
 
 ## P5.1 新增：全图问答 Agent 与全局问答 Agent
 
-P5.1 在 P5.0 节点问答 Agent 的基础上，继续接入六种聊天方式中的「全图问答（Agent）」和「全局问答（Agent）」。两种模式都通过 NetMind 后端调用外部 AgentBuild `src.agent_kernel`，沿用统一的模型配置、Skill 权限确认、Agent 记忆和对话历史机制。
+P5.1 在 P5.0 节点问答 Agent 的基础上，继续接入六种聊天方式中的「全图问答（Agent）」和「全局问答（Agent）」。两种模式都通过 NetMind 后端调用外部 AgentBuild `src.agent_kernel`，沿用统一的模型配置、Tool 权限确认、Agent 记忆和对话历史机制。
 
 - **全图问答（Agent）入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「全图问答（Agent）」。
 - **全图问答（Agent）端点**：`POST /api/ai/map-agent-chat`。
@@ -13,8 +22,8 @@ P5.1 在 P5.0 节点问答 Agent 的基础上，继续接入六种聊天方式�
 - **全局问答（Agent）端点**：`POST /api/ai/global-agent-chat`。
 - **全局上下文范围**：只传递 NetMind 基础应用信息、对话历史、Agent 记忆和上下文预算，不传递任何节点、关联或思维导图数据。
 - **Prompt/身份配置**：Agent 身份和补充提示已迁移到 `src/NetMind.WebApi/Config/AiCleanPrompts/*-agent-*.prompt.md`，`appsettings*.json` 只保存 Prompt 文件路径。
-- **AgentBuild 参数适配**：按 AgentBuild 当前接口规范，后端额外传入 `skill_runtime`。该字段不进入 Prompt，只会在 Kernel 执行 Skill 时注入到 `params.__runtime`，用于提供 NetMind WebAPI 地址、Skill 超时和 endpoint 映射。
-- **服务 BaseUrl**：`App:BaseUrl` 同时用于 WebAPI 默认监听地址和 Agent Skill runtime 的 `netmind_api_base_url`。
+- **AgentBuild 参数适配**：按 AgentBuild 当前接口规范，后端传入 `tool_runtime`。该字段不进入 Prompt，只会在 Kernel 执行 Tool 时注入到 `params.__runtime`，用于提供 NetMind WebAPI 地址和 Tool 超时。
+- **服务 BaseUrl**：`App:BaseUrl` 同时用于 WebAPI 默认监听地址和 Agent Tool runtime 的 `netmind_api_base_url`。
 - **Python 执行器**：默认仍读取 `AiAgent:PythonExecutable`，当前配置为 `py`；若本机 Windows Python Launcher 无法发现 Python，可改为本机 `python.exe` 的绝对路径。
 
 ## P5.3 新增：应用帮助 Agent 与入口收束
@@ -30,15 +39,15 @@ P5.3 删除前端 AI 浮窗中的「节点问答（聊天）」和「全图问�
 
 ## P5.0 新增：AgentBuild 节点问答 Agent
 
-P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核脚本。普通节点聊天仍走 NetMind 后端内置 Prompt；Agent 模式由后端调用 AgentBuild 的 `src.agent_kernel`，并把当前节点上下文、模型配置、Skill 权限记录和历史上下文传入内核。
+P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核脚本。普通节点聊天仍走 NetMind 后端内置 Prompt；Agent 模式由后端调用 AgentBuild 的 `src.agent_kernel`，并把当前节点上下文、模型配置、Tool 权限记录和历史上下文传入内核。
 
 - **前端入口**：知识卡片左侧 AI 浮窗 → 模式选择 →「节点问答（Agent）」。
 - **脚本目录配置**：顶部导航栏「设置」→「AgentBuild 脚本设置」，默认 `G:\AAW+\NetMind\AgentBuild`。该目录下必须存在 `src/agent_kernel.py`。
 - **后端端点**：`POST /api/ai/node-agent-chat`。
-- **默认 Skill 绑定**：`domain_and_skill_binding=default`。
+- **默认 Tool 领域**：Kernel API v2 使用 `domain=netmind`。
 - **模型配置来源**：沿用全局默认 AI 模型。后端把选中模型转换为 AgentBuild 的 `model_config`，包含 `model_name`、`api_url`、`api_key`、`temperature`、`max_tokens`、`timeout`、`max_retries` 和 JSON 输出格式。
 - **Prompt/身份配置**：Agent 身份和补充提示写在 `Config/AiCleanPrompts` 的 Agent Prompt 文件中，不硬编码在业务代码内。
-- **权限交互**：AgentBuild 返回 `waiting_permission` 时，前端展示 Skill 权限确认按钮；用户允许或拒绝后，下一轮请求会带回 `confirmed_skill_calls` 与 `history_skill_calls`。
+- **权限交互**：AgentBuild 返回 `waiting_permission` 时，前端展示 Tool 权限确认按钮；用户允许或拒绝后，下一轮请求会带回 `confirmed_tool_calls` 与 `history_tool_calls`。
 
 新增后端配置：
 

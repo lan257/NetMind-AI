@@ -14,6 +14,7 @@ namespace NetMind.Services.Implementations;
 public sealed class AiAgentService : IAiAgentService
 {
     private const string DefaultDomainAndSkillBinding = "netmind";
+    private const string AgentKernelApiVersion = "v2";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -111,7 +112,7 @@ public sealed class AiAgentService : IAiAgentService
         string conversationPrefix,
         Func<string, int, double, string, Task<Dictionary<string, object?>>> buildFocusContextAsync)
     {
-        if (string.IsNullOrWhiteSpace(request.Message) && (request.ConfirmedSkillCalls?.Count ?? 0) == 0)
+        if (string.IsNullOrWhiteSpace(request.Message) && ResolveConfirmedToolCalls(request).Count == 0)
         {
             throw new ArgumentException("请输入对话内容。", nameof(request));
         }
@@ -151,7 +152,8 @@ public sealed class AiAgentService : IAiAgentService
             Reply = BuildAgentReply(kernelResponse),
             Status = kernelResponse.Status,
             AgentTarget = kernelResponse.AgentTarget,
-            SkillCalls = CloneElements(kernelResponse.SkillCalls),
+            ToolCalls = CloneElements(kernelResponse.GetToolCalls()),
+            SkillCalls = CloneElements(kernelResponse.GetToolCalls()),
             ContextUpdate = kernelResponse.ContextUpdate.ValueKind == JsonValueKind.Undefined
                 ? EmptyJsonObject()
                 : kernelResponse.ContextUpdate.Clone(),
@@ -185,39 +187,41 @@ public sealed class AiAgentService : IAiAgentService
         Dictionary<string, object?> agentContext,
         string conversationPrefix)
     {
-        var domain = ResolveDomainAndSkillBinding(request.DomainAndSkillBinding, scenario.DomainAndSkillBinding);
-        ApplyDomainAndSkillBinding(agentContext, domain);
+        var domain = ResolveDomain(request.Domain, request.DomainAndSkillBinding, scenario.DomainAndSkillBinding);
+        ApplyDomain(agentContext, domain);
 
         var userText = string.IsNullOrWhiteSpace(request.Message)
-            ? "用户已处理上一轮 Agent Skill 权限，请继续完成任务。"
+            ? "用户已处理上一轮 Agent Tool 权限，请继续完成任务。"
             : request.Message.Trim();
 
         return new Dictionary<string, object?>
         {
+            ["api_version"] = AgentKernelApiVersion,
             ["conversation_id"] = string.IsNullOrWhiteSpace(request.ConversationId)
                 ? $"{conversationPrefix}-{Guid.NewGuid():N}"
                 : request.ConversationId,
             ["user_text"] = userText,
-            ["domain_and_skill_binding"] = domain,
+            ["domain"] = domain,
             ["identity"] = JoinLines(scenario.IdentityLines, "你是 NetMind 的节点问答 Agent。"),
             ["cues"] = JoinLines(scenario.CuesLines, "使用中文，围绕当前节点上下文回答。"),
             ["model_config"] = modelConfig,
             ["context"] = agentContext,
-            ["skill_runtime"] = BuildSkillRuntime(),
-            ["confirmed_skill_calls"] = NormalizeConfirmedSkillCalls(request.ConfirmedSkillCalls),
-            ["history_skill_calls"] = CloneElements(request.HistorySkillCalls)
+            ["tool_runtime"] = BuildToolRuntime(),
+            ["confirmed_tool_calls"] = NormalizeConfirmedToolCalls(ResolveConfirmedToolCalls(request)),
+            ["history_tool_calls"] = CloneElements(ResolveHistoryToolCalls(request))
         };
     }
 
-    private Dictionary<string, object?> BuildSkillRuntime()
+    private Dictionary<string, object?> BuildToolRuntime()
     {
         return new Dictionary<string, object?>
         {
-            ["netmind_api_base_url"] = NormalizeBaseUrl(_agentOptions.NetMindApiBaseUrl),
             ["shared"] = new Dictionary<string, object?>
             {
+                ["netmind_api_base_url"] = NormalizeBaseUrl(_agentOptions.NetMindApiBaseUrl),
                 ["timeout_seconds"] = Math.Max(_agentOptions.SkillRuntimeTimeoutSeconds, 1)
             },
+            ["tools"] = new Dictionary<string, object?>()
         };
     }
 
@@ -590,35 +594,53 @@ public sealed class AiAgentService : IAiAgentService
         };
     }
 
-    private static string ResolveDomainAndSkillBinding(string? requestDomain, string? scenarioDomain)
+    private static string ResolveDomain(string? requestDomain, string? legacyRequestDomain, string? scenarioDomain)
     {
         var domain = string.IsNullOrWhiteSpace(requestDomain)
-            ? scenarioDomain
+            ? string.IsNullOrWhiteSpace(legacyRequestDomain)
+                ? scenarioDomain
+                : legacyRequestDomain.Trim()
             : requestDomain.Trim();
 
         return string.IsNullOrWhiteSpace(domain) ? DefaultDomainAndSkillBinding : domain.Trim();
     }
 
-    private static void ApplyDomainAndSkillBinding(Dictionary<string, object?> agentContext, string domain)
+    private static void ApplyDomain(Dictionary<string, object?> agentContext, string domain)
     {
         if (agentContext.TryGetValue("focus_context", out var focusContextValue) &&
             focusContextValue is Dictionary<string, object?> focusContext)
         {
-            focusContext["domain_and_skill_binding"] = domain;
+            focusContext["domain"] = domain;
         }
     }
 
-    private static IReadOnlyList<object?> NormalizeConfirmedSkillCalls(IReadOnlyList<JsonElement>? values)
+    private static IReadOnlyList<JsonElement> ResolveConfirmedToolCalls(AiAgentChatRequest request)
+    {
+        var toolCalls = request.ConfirmedToolCalls ?? Array.Empty<JsonElement>();
+        return toolCalls.Count > 0
+            ? toolCalls
+            : request.ConfirmedSkillCalls ?? Array.Empty<JsonElement>();
+    }
+
+    private static IReadOnlyList<JsonElement> ResolveHistoryToolCalls(AiAgentChatRequest request)
+    {
+        var toolCalls = request.HistoryToolCalls ?? Array.Empty<JsonElement>();
+        return toolCalls.Count > 0
+            ? toolCalls
+            : request.HistorySkillCalls ?? Array.Empty<JsonElement>();
+    }
+
+    private static IReadOnlyList<object?> NormalizeConfirmedToolCalls(IReadOnlyList<JsonElement>? values)
     {
         if (values is null || values.Count == 0)
         {
             return Array.Empty<object?>();
         }
 
-        return values.Select(NormalizeConfirmedSkillCall).ToList();
+        return values.Select(NormalizeConfirmedToolCall).ToList();
     }
 
-    private static object? NormalizeConfirmedSkillCall(JsonElement value)
+    private static object? NormalizeConfirmedToolCall(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Object)
         {
@@ -842,13 +864,21 @@ public sealed class AiAgentService : IAiAgentService
         [JsonPropertyName("main_text")]
         public string MainText { get; init; } = string.Empty;
 
+        [JsonPropertyName("tool_calls")]
+        public IReadOnlyList<JsonElement> ToolCalls { get; init; } = Array.Empty<JsonElement>();
+
         [JsonPropertyName("skill_calls")]
-        public IReadOnlyList<JsonElement> SkillCalls { get; init; } = Array.Empty<JsonElement>();
+        public IReadOnlyList<JsonElement> LegacySkillCalls { get; init; } = Array.Empty<JsonElement>();
 
         [JsonPropertyName("context_update")]
         public JsonElement ContextUpdate { get; init; }
 
         [JsonPropertyName("error")]
         public string? Error { get; init; }
+
+        public IReadOnlyList<JsonElement> GetToolCalls()
+        {
+            return ToolCalls.Count > 0 ? ToolCalls : LegacySkillCalls;
+        }
     }
 }

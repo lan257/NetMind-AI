@@ -76,13 +76,13 @@ async function handleSend() {
   nextTick(() => scrollToBottom());
 }
 
-async function handleSkillApproval(call, approved) {
+async function handleToolApproval(call, approved) {
   let rejectReason = '';
   if (!approved) {
     try {
       const { value } = await ElMessageBox.prompt(
         '可填写拒绝原因，AI 会在下一轮根据原因继续回答。',
-        '拒绝 Skill 调用',
+        '拒绝工具调用',
         {
           confirmButtonText: '提交拒绝',
           cancelButtonText: '取消',
@@ -95,7 +95,7 @@ async function handleSkillApproval(call, approved) {
     }
   }
 
-  await chat.confirmSkillCall(call, approved, props.node, props.currentMapId, rejectReason);
+  await chat.confirmToolCall(call, approved, props.node, props.currentMapId, rejectReason);
   nextTick(() => scrollToBottom());
 }
 
@@ -125,11 +125,19 @@ const currentModeLabel = computed(() => {
   return m ? m.label : chat.chatMode.value;
 });
 
-function getSkillName(call) {
-  return call?.skill_name || call?.skillName || call?.skill_id || call?.skillId || 'Skill';
+function getToolName(call) {
+  return call?.tool_name ||
+    call?.toolName ||
+    call?.tool_id ||
+    call?.toolId ||
+    call?.skill_name ||
+    call?.skillName ||
+    call?.skill_id ||
+    call?.skillId ||
+    '工具';
 }
 
-function getSkillReason(call) {
+function getToolReason(call) {
   return call?.reason ||
     call?.permission?.reject_reason ||
     call?.execution?.denied_reason ||
@@ -137,7 +145,7 @@ function getSkillReason(call) {
     '';
 }
 
-function getSkillStatus(call) {
+function getToolStatus(call) {
   return call?.execution?.status || '';
 }
 
@@ -150,8 +158,8 @@ function getAgentStatusText(status) {
   return map[status] || status || '进行中';
 }
 
-function getSkillStatusText(call) {
-  const status = getSkillStatus(call);
+function getToolStatusText(call) {
+  const status = getToolStatus(call);
   const map = {
     waiting_permission: '待确认',
     permission_approved: '已允许',
@@ -164,8 +172,8 @@ function getSkillStatusText(call) {
   return map[status] || status || '未知';
 }
 
-function getSkillStatusType(call) {
-  const status = getSkillStatus(call);
+function getToolStatusType(call) {
+  const status = getToolStatus(call);
   if (status === 'success') return 'success';
   if (status === 'waiting_permission') return 'warning';
   if (status === 'permission_approved') return 'success';
@@ -174,11 +182,11 @@ function getSkillStatusType(call) {
 }
 
 function getPermissionMessage(call) {
-  return call?.permission?.message || '是否允许执行该 Skill？';
+  return call?.permission?.message || '是否允许执行该工具？';
 }
 
 function isWaitingPermission(call) {
-  return getSkillStatus(call) === 'waiting_permission';
+  return getToolStatus(call) === 'waiting_permission';
 }
 </script>
 
@@ -230,7 +238,7 @@ function isWaitingPermission(call) {
         <div v-if="chat.messages.value.length === 0" class="chat-empty">
           <template v-if="chat.chatMode.value === 'node-agent'">
             <p>节点问答</p>
-            <p class="chat-empty-hint">通过 AgentBuild 内核进行节点问答和 Skill 调用</p>
+            <p class="chat-empty-hint">通过 AgentBuild 内核进行节点问答和工具调用</p>
             <p class="chat-empty-hint" v-if="!node">请先在画布或列表中选择一个节点</p>
           </template>
           <template v-else-if="chat.chatMode.value === 'map-agent'">
@@ -264,18 +272,18 @@ function isWaitingPermission(call) {
             <div class="agent-progress-text markdown-body" v-html="renderMarkdown(msg.agent.progressText)"></div>
           </div>
           <div v-if="msg.content" class="msg-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
-          <div v-if="msg.agent?.skillCalls?.length" class="agent-skill-list">
-            <div v-for="call in msg.agent.skillCalls" :key="call.call_id || call.callId || call.skill_id || call.skillId" class="agent-skill-item">
+          <div v-if="msg.agent?.toolCalls?.length" class="agent-skill-list">
+            <div v-for="call in msg.agent.toolCalls" :key="call.call_id || call.callId || call.tool_id || call.toolId || call.skill_id || call.skillId" class="agent-skill-item">
               <div class="agent-skill-head">
-                <span>{{ getSkillName(call) }}</span>
-                <el-tag size="small" :type="getSkillStatusType(call)">{{ getSkillStatusText(call) }}</el-tag>
+                <span>{{ getToolName(call) }}</span>
+                <el-tag size="small" :type="getToolStatusType(call)">{{ getToolStatusText(call) }}</el-tag>
               </div>
-              <div v-if="getSkillReason(call)" class="agent-skill-reason">{{ getSkillReason(call) }}</div>
+              <div v-if="getToolReason(call)" class="agent-skill-reason">{{ getToolReason(call) }}</div>
               <div v-if="isWaitingPermission(call)" class="agent-permission">
                 <p>{{ getPermissionMessage(call) }}</p>
                 <div class="agent-permission-actions">
-                  <el-button :icon="Check" size="small" type="primary" :disabled="chat.loading.value" @click="handleSkillApproval(call, true)">允许</el-button>
-                  <el-button :icon="Close" size="small" :disabled="chat.loading.value" @click="handleSkillApproval(call, false)">拒绝</el-button>
+                  <el-button :icon="Check" size="small" type="primary" :disabled="chat.loading.value" @click="handleToolApproval(call, true)">允许</el-button>
+                  <el-button :icon="Close" size="small" :disabled="chat.loading.value" @click="handleToolApproval(call, false)">拒绝</el-button>
                 </div>
               </div>
             </div>
