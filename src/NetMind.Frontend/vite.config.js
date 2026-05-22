@@ -7,10 +7,13 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5119',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5120',
         changeOrigin: true
       }
-    }
+    },
+    allowedHosts: [
+      'unexalting-maniacal-ayleen.ngrok-free.dev'
+    ]
   },
   preview: {
     host: true

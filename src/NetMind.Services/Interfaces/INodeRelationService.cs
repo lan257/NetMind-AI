@@ -6,6 +6,8 @@ public interface INodeRelationService
 {
     Task<IReadOnlyList<NodeRelationDto>> ListByMapAsync(long mapId);
 
+    Task<IReadOnlyList<NodeRelationDto>> ListByNodeAsync(long nodeId);
+
     Task<NodeRelationDto?> GetAsync(long id);
 
     Task<NodeRelationDto> CreateAsync(CreateNodeRelationRequest request);

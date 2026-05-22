@@ -40,7 +40,7 @@ public sealed class MindMapTransferController : ControllerBase
             return NotFound(ApiResult<MindMapStructureDto>.Fail("导图不存在。"));
         }
 
-        return JsonFile(structure.Transfer, $"netmind-map-{mapId}.json");
+        return JsonFile(structure.Transfer, CreateExportFileName(structure, mapId));
     }
 
     [HttpPost("structure")]
@@ -117,5 +117,27 @@ public sealed class MindMapTransferController : ControllerBase
         {
             FileDownloadName = fileName
         };
+    }
+
+    private static string CreateExportFileName(MindMapStructureDto structure, long mapId)
+    {
+        var title = string.IsNullOrWhiteSpace(structure.Map.Title)
+            ? structure.Transfer.Title
+            : structure.Map.Title;
+        var fileStem = SanitizeFileName(title);
+        return $"{(string.IsNullOrWhiteSpace(fileStem) ? $"netmind-map-{mapId}" : fileStem)}.json";
+    }
+
+    private static string SanitizeFileName(string? value)
+    {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var safeCharacters = (value ?? string.Empty)
+            .Trim()
+            .Select(character =>
+                invalidCharacters.Contains(character) || "<>:\"/\\|?*".Contains(character)
+                    ? '_'
+                    : character)
+            .ToArray();
+        return new string(safeCharacters).Trim().TrimEnd('.');
     }
 }

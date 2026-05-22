@@ -6,7 +6,15 @@ public sealed class NodeRelationDto
 
     public long SourceId { get; init; }
 
+    public string? SourceTitle { get; init; }
+
+    public long? SourceMapId { get; init; }
+
     public long TargetId { get; init; }
+
+    public string? TargetTitle { get; init; }
+
+    public long? TargetMapId { get; init; }
 
     public string RelationType { get; init; } = string.Empty;
 

@@ -1,9 +1,10 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using NetMind.Common.Logging;
 using NetMind.Models.Dtos;
+using NetMind.Repository.Interfaces;
 using NetMind.Services.Configurations;
 using NetMind.Services.Interfaces;
 
@@ -21,22 +22,37 @@ public sealed class AiCleanService : IAiCleanService
     private readonly AiCleanOptions _options;
     private readonly HttpClient _httpClient;
     private readonly IAppLogger _logger;
+    private readonly INodeRepository _nodeRepository;
+    private readonly INodeRelationRepository _relationRepository;
     private readonly string _systemPrompt;
     private readonly string _userPromptTemplate;
     private readonly string _requirementPromptTemplate;
     private readonly string _contextChatPromptTemplate;
     private readonly string _contextCompressionPromptTemplate;
+    private readonly string _nodeChatPromptTemplate;
+    private readonly string _nodeChatCompressionPromptTemplate;
+    private readonly string _mapChatPromptTemplate;
+    private readonly string _appHelpPromptTemplate;
+    private readonly string _appManualText;
 
-    public AiCleanService(AiCleanOptions options, HttpClient httpClient, IAppLogger logger)
+    public AiCleanService(AiCleanOptions options, HttpClient httpClient, IAppLogger logger,
+        INodeRepository nodeRepository, INodeRelationRepository relationRepository)
     {
         _options = options;
         _httpClient = httpClient;
         _logger = logger;
+        _nodeRepository = nodeRepository;
+        _relationRepository = relationRepository;
         _systemPrompt = JoinPromptLines(options.Prompt.SystemPromptLines, "AiClean:Prompt:SystemPromptLines");
         _userPromptTemplate = JoinPromptLines(options.Prompt.UserPromptTemplateLines, "AiClean:Prompt:UserPromptTemplateLines");
         _requirementPromptTemplate = JoinPromptLines(options.Prompt.RequirementPromptTemplateLines, "AiClean:Prompt:RequirementPromptTemplateLines");
         _contextChatPromptTemplate = JoinPromptLines(options.Prompt.ContextChatPromptTemplateLines, "AiClean:Prompt:ContextChatPromptTemplateLines");
         _contextCompressionPromptTemplate = JoinPromptLines(options.Prompt.ContextCompressionPromptTemplateLines, "AiClean:Prompt:ContextCompressionPromptTemplateLines");
+        _nodeChatPromptTemplate = JoinPromptLines(options.Prompt.NodeChatPromptTemplateLines, "AiClean:Prompt:NodeChatPromptTemplateLines");
+        _nodeChatCompressionPromptTemplate = JoinPromptLines(options.Prompt.NodeChatCompressionPromptTemplateLines, "AiClean:Prompt:NodeChatCompressionPromptTemplateLines");
+        _mapChatPromptTemplate = JoinPromptLines(options.Prompt.MapChatPromptTemplateLines, "AiClean:Prompt:MapChatPromptTemplateLines");
+        _appHelpPromptTemplate = JoinPromptLines(options.Prompt.AppHelpPromptTemplateLines, "AiClean:Prompt:AppHelpPromptTemplateLines");
+        _appManualText = JoinPromptLines(options.Prompt.AppManualLines, "AiClean:Prompt:AppManualLines");
     }
 
     public IReadOnlyList<AiModelOptionDto> ListModels()
@@ -66,13 +82,13 @@ public sealed class AiCleanService : IAiCleanService
         }
 
         var prompt = BuildUserPrompt(request.NaturalLanguage);
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
             try
             {
-                var content = await CallModelAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt, request.ApiKey);
 
                 var transfer = ParseTransfer(content);
                 ValidateTransfer(transfer);
@@ -103,15 +119,15 @@ public sealed class AiCleanService : IAiCleanService
             throw new ArgumentException("请输入对话内容。", nameof(request));
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
             try
             {
-                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context);
+                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context, request.ApiKey);
                 var prompt = BuildContextChatPrompt(request.Message, contextResult.Context);
-                var content = await CallModelAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt, request.ApiKey);
                 var reply = ParseContextChatReply(content);
 
                 return new AiContextChatResultDto
@@ -142,15 +158,15 @@ public sealed class AiCleanService : IAiCleanService
             throw new ArgumentException("请输入需求内容。", nameof(request));
         }
 
-        var candidates = SelectModels(request.ModelId);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
             try
             {
-                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context);
+                var contextResult = await CompressContextIfNeededAsync(candidate, request.Context, request.ApiKey);
                 var prompt = BuildRequirementPrompt(request.Requirement, contextResult.Context);
-                var content = await CallModelAsync(candidate, prompt);
+                var content = await CallModelAsync(candidate, prompt, request.ApiKey);
                 var transfer = ParseTransfer(content);
                 ValidateTransfer(transfer);
 
@@ -175,57 +191,554 @@ public sealed class AiCleanService : IAiCleanService
         throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
     }
 
-    private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId)
+    public async Task<AiNodeChatResult> ChatWithNodeAsync(AiNodeChatRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new ArgumentException("请输入对话内容。", nameof(request));
+        }
+
+        if (request.NodeId <= 0)
+        {
+            throw new ArgumentException("请选择有效的节点。", nameof(request));
+        }
+
+        var node = await _nodeRepository.GetAsync(request.NodeId);
+        if (node is null)
+        {
+            throw new ArgumentException("节点不存在。", nameof(request));
+        }
+
+        var nodeContext = await BuildNodeContextAsync(node);
+
+        var maxLength = Math.Max(request.MaxContextLength, 1024);
+        var contextText = request.Context?.Trim() ?? string.Empty;
+        var usagePercent = maxLength <= 0 ? 0 : (double)contextText.Length / maxLength * 100;
+
+        string contextStatus;
+        if (usagePercent > 100)
+        {
+            throw new InvalidOperationException($"当前上下文长度为 {contextText.Length} 字符，超过上限 {maxLength} 字符（{usagePercent:F0}%），请删减上下文或分多次发送。");
+        }
+
+        string prompt;
+        bool needCompression;
+        int compressionTargetLength = 0;
+        int maxReplyLength = maxLength;
+
+        if (usagePercent > 80)
+        {
+            contextStatus = "critical";
+            needCompression = false;
+            contextText = string.Empty;
+            prompt = BuildNodeChatPrompt(nodeContext, contextText, request.Message, false, 0, maxReplyLength);
+        }
+        else if (usagePercent > 60)
+        {
+            contextStatus = "warning";
+            needCompression = true;
+            compressionTargetLength = (int)(maxLength * 0.4);
+            maxReplyLength = (int)(maxLength * 0.4);
+            prompt = BuildNodeChatPrompt(nodeContext, contextText, request.Message, true, compressionTargetLength, maxReplyLength);
+        }
+        else
+        {
+            contextStatus = "comfortable";
+            needCompression = false;
+            prompt = BuildNodeChatPrompt(nodeContext, contextText, request.Message, false, 0, maxReplyLength);
+        }
+
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var content = await CallModelForTextAsync(candidate, prompt, request.ApiKey);
+                var (reply, compressedContext) = ParseNodeChatResponse(content);
+
+                return new AiNodeChatResult
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    Reply = reply,
+                    CompressedContext = compressedContext,
+                    WasContextCompressed = needCompression && !string.IsNullOrWhiteSpace(compressedContext),
+                    ContextUsagePercent = usagePercent,
+                    ContextStatus = contextStatus,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    public async Task<AiAppHelpResult> ChatForAppHelpAsync(AiAppHelpRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new ArgumentException("请输入对话内容。", nameof(request));
+        }
+
+        var maxLength = Math.Max(request.MaxContextLength, 1024);
+        var contextText = request.Context?.Trim() ?? string.Empty;
+        var usagePercent = maxLength <= 0 ? 0 : (double)contextText.Length / maxLength * 100;
+
+        string contextStatus;
+        if (usagePercent > 100)
+        {
+            throw new InvalidOperationException($"当前上下文长度为 {contextText.Length} 字符，超过上限 {maxLength} 字符（{usagePercent:F0}%），请删减上下文或分多次发送。");
+        }
+
+        string prompt;
+        bool needCompression;
+        int compressionTargetLength = 0;
+        int maxReplyLength = maxLength;
+
+        if (usagePercent > 80)
+        {
+            contextStatus = "critical";
+            needCompression = false;
+            contextText = string.Empty;
+            prompt = BuildAppHelpPrompt(contextText, request.Message, false, 0, maxReplyLength);
+        }
+        else if (usagePercent > 60)
+        {
+            contextStatus = "warning";
+            needCompression = true;
+            compressionTargetLength = (int)(maxLength * 0.4);
+            maxReplyLength = (int)(maxLength * 0.4);
+            prompt = BuildAppHelpPrompt(contextText, request.Message, true, compressionTargetLength, maxReplyLength);
+        }
+        else
+        {
+            contextStatus = "comfortable";
+            needCompression = false;
+            prompt = BuildAppHelpPrompt(contextText, request.Message, false, 0, maxReplyLength);
+        }
+
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var content = await CallModelForTextAsync(candidate, prompt, request.ApiKey);
+                var (reply, compressedContext) = ParseNodeChatResponse(content);
+
+                return new AiAppHelpResult
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    Reply = reply,
+                    CompressedContext = compressedContext,
+                    WasContextCompressed = needCompression && !string.IsNullOrWhiteSpace(compressedContext),
+                    ContextUsagePercent = usagePercent,
+                    ContextStatus = contextStatus,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    public async Task<AiMapChatResult> ChatWithMapAsync(AiMapChatRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new ArgumentException("请输入对话内容。", nameof(request));
+        }
+
+        if (request.MapId <= 0)
+        {
+            throw new ArgumentException("请选择有效的思维导图。", nameof(request));
+        }
+
+        var mapContext = await BuildMapContextAsync(request.MapId);
+
+        var maxLength = Math.Max(request.MaxContextLength, 1024);
+        var contextText = request.Context?.Trim() ?? string.Empty;
+        var usagePercent = maxLength <= 0 ? 0 : (double)contextText.Length / maxLength * 100;
+
+        string contextStatus;
+        if (usagePercent > 100)
+        {
+            throw new InvalidOperationException($"当前上下文长度为 {contextText.Length} 字符，超过上限 {maxLength} 字符（{usagePercent:F0}%），请删减上下文或分多次发送。");
+        }
+
+        string prompt;
+        bool needCompression;
+
+        if (usagePercent > 80)
+        {
+            contextStatus = "critical";
+            needCompression = false;
+            contextText = string.Empty;
+            prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
+        }
+        else if (usagePercent > 60)
+        {
+            contextStatus = "warning";
+            needCompression = true;
+            contextText = string.Empty; // drop history, ask AI to compress
+            prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
+        }
+        else
+        {
+            contextStatus = "comfortable";
+            needCompression = false;
+            prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
+        }
+
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var content = await CallModelForTextAsync(candidate, prompt, request.ApiKey);
+                var (reply, compressedContext) = ParseNodeChatResponse(content);
+
+                return new AiMapChatResult
+                {
+                    SelectedModel = ToDto(candidate),
+                    Prompt = prompt,
+                    Reply = reply,
+                    CompressedContext = compressedContext,
+                    WasContextCompressed = needCompression && !string.IsNullOrWhiteSpace(compressedContext),
+                    ContextUsagePercent = usagePercent,
+                    ContextStatus = contextStatus,
+                    Warnings = lastError is null
+                        ? Array.Empty<string>()
+                        : new[] { $"主模型调用失败，已使用备用模型：{lastError.Message}" }
+                };
+            }
+            catch (Exception ex) when (string.IsNullOrWhiteSpace(request.ModelId) && ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("未配置可用的 AI 清洗模型。");
+    }
+
+    private async Task<string> BuildMapContextAsync(long mapId)
+    {
+        var nodes = await _nodeRepository.ListByMapAsync(mapId);
+        var relations = await _relationRepository.ListByMapAsync(mapId);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"导图节点总数: {nodes.Count}");
+        sb.AppendLine($"关联关系总数: {relations.Count}");
+        sb.AppendLine();
+
+        // Build a parent->children index for tree structure
+        var childrenByParent = new Dictionary<long, List<string>>();
+        var rootNodes = new List<string>();
+        foreach (var node in nodes)
+        {
+            var titleLine = $"#{node.Id} {node.Title}";
+            if (node.ParentId.HasValue)
+            {
+                var key = node.ParentId.Value;
+                if (!childrenByParent.ContainsKey(key))
+                {
+                    childrenByParent[key] = new List<string>();
+                }
+                childrenByParent[key].Add(titleLine);
+            }
+            else
+            {
+                rootNodes.Add(titleLine);
+            }
+        }
+
+        // Output tree structure starting from root nodes (ParentId == null)
+        sb.AppendLine("=== 节点树结构 ===");
+        foreach (var root in rootNodes)
+        {
+            sb.AppendLine(root);
+            // Find children recursively (simple depth-first)
+            var rootIdMatch = System.Text.RegularExpressions.Regex.Match(root, @"^#(\d+)");
+            if (rootIdMatch.Success && long.TryParse(rootIdMatch.Groups[1].Value, out var rootId))
+            {
+                WriteSubtree(sb, childrenByParent, rootId, "  ");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("=== 关联关系列表 ===");
+        var nodeTitleById = nodes.ToDictionary(n => n.Id, n => n.Title);
+        foreach (var rel in relations)
+        {
+            var srcTitle = nodeTitleById.GetValueOrDefault(rel.SourceId, $"节点#{rel.SourceId}");
+            var tgtTitle = nodeTitleById.GetValueOrDefault(rel.TargetId, $"节点#{rel.TargetId}");
+            sb.AppendLine($"  #{rel.SourceId} {srcTitle} --[{rel.RelationType}]--> #{rel.TargetId} {tgtTitle}");
+        }
+
+        return sb.ToString();
+    }
+
+    private static void WriteSubtree(StringBuilder sb, Dictionary<long, List<string>> childrenByParent, long parentId, string indent)
+    {
+        var children = childrenByParent.GetValueOrDefault(parentId, new List<string>());
+        foreach (var child in children)
+        {
+            sb.AppendLine($"{indent}{child}");
+            var childIdMatch = System.Text.RegularExpressions.Regex.Match(child, @"^#(\d+)");
+            if (childIdMatch.Success && long.TryParse(childIdMatch.Groups[1].Value, out var childId))
+            {
+                WriteSubtree(sb, childrenByParent, childId, indent + "  ");
+            }
+        }
+    }
+
+    private string BuildMapChatPrompt(string mapContext, string contextText, string message)
+    {
+        return _mapChatPromptTemplate
+            .Replace("{{mapContext}}", mapContext, StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(contextText) ? "（无历史上下文）" : contextText, StringComparison.Ordinal)
+            .Replace("{{message}}", message.Trim(), StringComparison.Ordinal);
+    }
+
+    private string BuildAppHelpPrompt(string contextText, string message,
+        bool needCompression, int compressionTargetLength, int maxReplyLength)
+    {
+        var prompt = _appHelpPromptTemplate
+            .Replace("{{manual}}", _appManualText, StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(contextText) ? "（无历史上下文）" : contextText, StringComparison.Ordinal)
+            .Replace("{{message}}", message.Trim(), StringComparison.Ordinal);
+
+        if (needCompression)
+        {
+            prompt = prompt
+                .Replace("（空）",
+                    $"在此输出压缩后的对话上下文。压缩目标不超过 {compressionTargetLength} 个字符（约占上限 40%）。" +
+                    "正文不得超过 " + maxReplyLength + " 个字符（约占上限 40%）。" +
+                    "压缩规则：保留关键信息（事实、决策、约束、术语、未解决问题），删除重复、寒暄和无关细节。不编造新内容。",
+                    StringComparison.Ordinal);
+        }
+
+        return prompt;
+    }
+
+    private async Task<string> BuildNodeContextAsync(NetMind.Models.Entities.NodeEntity node)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"标题: {node.Title}");
+        if (!string.IsNullOrWhiteSpace(node.Content))
+        {
+            sb.AppendLine($"内容: {node.Content}");
+        }
+
+        var allNodes = await _nodeRepository.ListByMapAsync(node.MapId);
+
+        var parents = new List<string>();
+        var current = node.ParentId.HasValue
+            ? allNodes.FirstOrDefault(n => n.Id == node.ParentId.Value)
+            : null;
+        while (current is not null)
+        {
+            parents.Insert(0, current.Title);
+            current = current.ParentId.HasValue
+                ? allNodes.FirstOrDefault(n => n.Id == current.ParentId.Value)
+                : null;
+        }
+        sb.AppendLine($"父节点链: {(parents.Count > 0 ? string.Join(" > ", parents) : "(根节点)")}");
+
+        var children = allNodes.Where(n => n.ParentId == node.Id).ToList();
+        sb.AppendLine($"子节点({children.Count}): {(children.Count > 0 ? string.Join(", ", children.Take(10).Select(c => c.Title)) : "(无)")}");
+
+        var relations = await _relationRepository.ListByNodeAsync(node.Id);
+        var relationDescriptions = new List<string>();
+        foreach (var rel in relations)
+        {
+            var isSource = rel.SourceId == node.Id;
+            var otherId = isSource ? rel.TargetId : rel.SourceId;
+            var otherNode = allNodes.FirstOrDefault(n => n.Id == otherId);
+            var otherTitle = otherNode?.Title ?? $"节点#{otherId}";
+            var direction = isSource ? "→" : "←";
+            relationDescriptions.Add($"{direction} [{rel.RelationType}] {otherTitle}");
+        }
+        sb.AppendLine($"关联节点({relations.Count}): {(relationDescriptions.Count > 0 ? string.Join("; ", relationDescriptions) : "(无)")}");
+
+        return sb.ToString();
+    }
+
+    private string BuildNodeChatPrompt(string nodeContext, string contextText, string message,
+        bool needCompression, int compressionTargetLength, int maxReplyLength)
+    {
+        if (needCompression)
+        {
+            return _nodeChatCompressionPromptTemplate
+                .Replace("{{nodeContext}}", nodeContext, StringComparison.Ordinal)
+                .Replace("{{context}}", contextText, StringComparison.Ordinal)
+                .Replace("{{message}}", message.Trim(), StringComparison.Ordinal)
+                .Replace("{{compressionTargetLength}}", compressionTargetLength.ToString(), StringComparison.Ordinal)
+                .Replace("{{maxReplyLength}}", maxReplyLength.ToString(), StringComparison.Ordinal);
+        }
+
+        return _nodeChatPromptTemplate
+            .Replace("{{nodeContext}}", nodeContext, StringComparison.Ordinal)
+            .Replace("{{context}}", string.IsNullOrWhiteSpace(contextText) ? "（无历史上下文）" : contextText, StringComparison.Ordinal)
+            .Replace("{{message}}", message.Trim(), StringComparison.Ordinal);
+    }
+
+    private static (string Reply, string CompressedContext) ParseNodeChatResponse(string content)
+    {
+        var text = StripMarkdownFence(content.Trim());
+
+        var replyStart = text.IndexOf("【正文】", StringComparison.Ordinal);
+        var ctxStart = text.IndexOf("【压缩上下文】", StringComparison.Ordinal);
+
+        string reply;
+        string compressedContext;
+
+        if (replyStart >= 0)
+        {
+            var replyEnd = ctxStart > replyStart ? ctxStart : text.Length;
+            reply = text[(replyStart + 4)..replyEnd].Trim();
+        }
+        else
+        {
+            reply = text;
+        }
+
+        if (ctxStart >= 0)
+        {
+            var ctxContent = text[(ctxStart + 7)..].Trim();
+            compressedContext = ctxContent.Length > 0 && ctxContent != "（空）" && ctxContent != "(空)" ? ctxContent : string.Empty;
+        }
+        else
+        {
+            compressedContext = string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            throw new InvalidOperationException("AI 节点对话返回正文为空。");
+        }
+
+        return (reply, compressedContext);
+    }
+
+    private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId, string? endpoint = null, string? provider = null, string? apiKey = null)
+    {
+        // 前端自定义模型（从设置中配置的模型，通过请求体直传 endpoint/provider/apiKey）
+        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(provider))
+        {
+            return new[]
+            {
+                new AiModelOptions
+                {
+                    Id = requestedModelId ?? "custom",
+                    Name = requestedModelId ?? "自定义模型",
+                    Provider = provider,
+                    Endpoint = endpoint,
+                    Model = provider.Equals("ollama", StringComparison.OrdinalIgnoreCase) ? "custom" : "deepseek-chat",
+                    Enabled = true,
+                    IsDefault = false,
+                    ApiKey = apiKey,
+                    TimeoutSeconds = 60
+                }
+            };
+        }
+
+        // 后端配置模型（appsettings.json）
         if (!string.IsNullOrWhiteSpace(requestedModelId))
         {
             var requested = _options.Models.FirstOrDefault(model =>
                 model.Enabled && string.Equals(model.Id, requestedModelId, StringComparison.Ordinal));
             if (requested is not null)
             {
+                // 如果前端传了 apiKey，用它覆盖环境变量 Key
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    requested = new AiModelOptions
+                    {
+                        Id = requested.Id,
+                        Name = requested.Name,
+                        Provider = requested.Provider,
+                        Endpoint = requested.Endpoint,
+                        Model = requested.Model,
+                        Enabled = true,
+                        IsDefault = requested.IsDefault,
+                        ApiKey = apiKey,
+                        TimeoutSeconds = requested.TimeoutSeconds,
+                        Notes = requested.Notes
+                    };
+                }
+
                 return new[] { requested };
             }
 
-            throw new ArgumentException($"AI 模型 '{requestedModelId}' 未配置或未启用。", nameof(requestedModelId));
+            throw new ArgumentException($"AI 模型 '{requestedModelId}' 未配置或未启用。请在「设置 → AI 大模型配置」中添加模型。", nameof(requestedModelId));
         }
 
-        return _options.Models
-            .Where(model => model.Enabled)
-            .OrderBy(model => model.IsDefault ? 0 : 1)
-            .ThenBy(model => model.Provider.Equals("deepseek", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ThenBy(model => model.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ThenBy(model => model.Id, StringComparer.Ordinal)
-            .ToList();
+        throw new InvalidOperationException("未选择 AI 模型。请在「设置 → AI 大模型配置」中选择默认模型。");
     }
 
-    private async Task<string> CallOpenAiCompatibleAsync(AiModelOptions model, string prompt)
+    private async Task<string> CallOpenAiCompatibleAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
+    {
+        return await CallOpenAiCompatibleInternalAsync(model, prompt, apiKeyOverride, true);
+    }
+
+    private async Task<string> CallOpenAiCompatibleTextAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
+    {
+        return await CallOpenAiCompatibleInternalAsync(model, prompt, apiKeyOverride, false);
+    }
+
+    private async Task<string> CallOpenAiCompatibleInternalAsync(AiModelOptions model, string prompt, string? apiKeyOverride, bool jsonResponse)
     {
         var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Post, model.Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        var apiKey = ResolveApiKey(model);
+        var apiKey = apiKeyOverride ?? ResolveApiKey(model);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException($"AI 模型 '{model.Id}' 需要配置 API Key。");
+            throw new InvalidOperationException(
+                $"AI 模型 '{model.Name}' 缺少 API Key。请在「设置 → AI 大模型配置」中为模型配置 API Key，" +
+                $"或设置环境变量 {(string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable) ? "" : model.ApiKeyEnvironmentVariable)}。");
         }
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        request.Content = JsonContent(new
+
+        var body = new Dictionary<string, object>
         {
-            model = model.Model,
-            messages = new[]
+            ["model"] = model.Model,
+            ["messages"] = new[]
             {
                 new { role = "system", content = _systemPrompt },
                 new { role = "user", content = prompt }
             },
-            temperature = 0.2,
-            response_format = new { type = "json_object" }
-        });
+            ["temperature"] = 0.2
+        };
+
+        if (jsonResponse)
+        {
+            body["response_format"] = new { type = "json_object" };
+        }
+
+        request.Content = JsonContent(body);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(model.TimeoutSeconds, 1)));
         using var response = await _httpClient.SendAsync(request, timeout.Token);
-        var body = await response.Content.ReadAsStringAsync(timeout.Token);
+        var responseBody = await response.Content.ReadAsStringAsync(timeout.Token);
         stopwatch.Stop();
         LogAiApiCall(model, response.StatusCode, stopwatch.ElapsedMilliseconds);
         if (!response.IsSuccessStatusCode)
@@ -233,7 +746,7 @@ public sealed class AiCleanService : IAiCleanService
             throw new InvalidOperationException($"AI 模型 '{model.Id}' 请求失败：{(int)response.StatusCode} {response.ReasonPhrase}。");
         }
 
-        using var document = JsonDocument.Parse(body);
+        using var document = JsonDocument.Parse(responseBody);
         var content = document.RootElement
             .GetProperty("choices")[0]
             .GetProperty("message")
@@ -243,27 +756,44 @@ public sealed class AiCleanService : IAiCleanService
         return content ?? throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回内容为空。");
     }
 
-    private async Task<string> CallOllamaAsync(AiModelOptions model, string prompt)
+    private async Task<string> CallOllamaAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
+    {
+        return await CallOllamaInternalAsync(model, prompt, apiKeyOverride, true);
+    }
+
+    private async Task<string> CallOllamaTextAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
+    {
+        return await CallOllamaInternalAsync(model, prompt, apiKeyOverride, false);
+    }
+
+    private async Task<string> CallOllamaInternalAsync(AiModelOptions model, string prompt, string? apiKeyOverride, bool jsonResponse)
     {
         var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Post, model.Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Content = JsonContent(new
+
+        var body = new Dictionary<string, object>
         {
-            model = model.Model,
-            stream = false,
-            messages = new[]
+            ["model"] = model.Model,
+            ["stream"] = false,
+            ["messages"] = new[]
             {
                 new { role = "system", content = _systemPrompt },
                 new { role = "user", content = prompt }
             },
-            format = "json",
-            options = new { temperature = 0.2 }
-        });
+            ["options"] = new { temperature = 0.2 }
+        };
+
+        if (jsonResponse)
+        {
+            body["format"] = "json";
+        }
+
+        request.Content = JsonContent(body);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(model.TimeoutSeconds, 1)));
         using var response = await _httpClient.SendAsync(request, timeout.Token);
-        var body = await response.Content.ReadAsStringAsync(timeout.Token);
+        var responseBody = await response.Content.ReadAsStringAsync(timeout.Token);
         stopwatch.Stop();
         LogAiApiCall(model, response.StatusCode, stopwatch.ElapsedMilliseconds);
         if (!response.IsSuccessStatusCode)
@@ -271,7 +801,7 @@ public sealed class AiCleanService : IAiCleanService
             throw new InvalidOperationException($"AI 模型 '{model.Id}' 请求失败：{(int)response.StatusCode} {response.ReasonPhrase}。");
         }
 
-        using var document = JsonDocument.Parse(body);
+        using var document = JsonDocument.Parse(responseBody);
         var content = document.RootElement
             .GetProperty("message")
             .GetProperty("content")
@@ -280,11 +810,18 @@ public sealed class AiCleanService : IAiCleanService
         return content ?? throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回内容为空。");
     }
 
-    private Task<string> CallModelAsync(AiModelOptions model, string prompt)
+    private Task<string> CallModelAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
     {
         return model.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase)
-            ? CallOllamaAsync(model, prompt)
-            : CallOpenAiCompatibleAsync(model, prompt);
+            ? CallOllamaAsync(model, prompt, apiKeyOverride)
+            : CallOpenAiCompatibleAsync(model, prompt, apiKeyOverride);
+    }
+
+    private Task<string> CallModelForTextAsync(AiModelOptions model, string prompt, string? apiKeyOverride = null)
+    {
+        return model.Provider.Equals("ollama", StringComparison.OrdinalIgnoreCase)
+            ? CallOllamaTextAsync(model, prompt, apiKeyOverride)
+            : CallOpenAiCompatibleTextAsync(model, prompt, apiKeyOverride);
     }
 
     private static MindMapTransferDto ParseTransfer(string content)
@@ -393,7 +930,7 @@ public sealed class AiCleanService : IAiCleanService
             .Replace("{{context}}", string.IsNullOrWhiteSpace(context) ? "No previous conversation." : context.Trim(), StringComparison.Ordinal);
     }
 
-    private async Task<(string Context, bool WasCompressed)> CompressContextIfNeededAsync(AiModelOptions model, string? context)
+    private async Task<(string Context, bool WasCompressed)> CompressContextIfNeededAsync(AiModelOptions model, string? context, string? apiKeyOverride = null)
     {
         var trimmed = context?.Trim() ?? string.Empty;
         if (trimmed.Length == 0)
@@ -408,7 +945,7 @@ public sealed class AiCleanService : IAiCleanService
 
         var prompt = _contextCompressionPromptTemplate
             .Replace("{{context}}", trimmed, StringComparison.Ordinal);
-        var compressed = ParseContextSummary(await CallModelAsync(model, prompt));
+        var compressed = ParseContextSummary(await CallModelAsync(model, prompt, apiKeyOverride));
         if (string.IsNullOrWhiteSpace(compressed))
         {
             throw new InvalidOperationException($"AI 模型 '{model.Id}' 返回的上下文摘要为空。");

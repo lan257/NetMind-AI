@@ -22,6 +22,12 @@ public sealed class NodesController : ControllerBase
         return ApiResult<IReadOnlyList<NodeDto>>.Ok(await _nodeService.ListByMapAsync(mapId));
     }
 
+    [HttpGet("search")]
+    public async Task<ApiResult<IReadOnlyList<NodeDto>>> SearchAsync([FromQuery] long? mapId, [FromQuery] string keyword, [FromQuery] int limit = 10)
+    {
+        return ApiResult<IReadOnlyList<NodeDto>>.Ok(await _nodeService.SearchAsync(mapId, keyword, limit));
+    }
+
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ApiResult<NodeDto>>> GetAsync(long id)
     {
@@ -51,7 +57,7 @@ public sealed class NodesController : ControllerBase
             var updated = await _nodeService.UpdateAsync(id, request);
             return updated is null ? NotFound(ApiResult<NodeDto>.Fail("节点或父节点不存在。")) : ApiResult<NodeDto>.Ok(updated);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return BadRequest(ApiResult<NodeDto>.Fail(ex.Message));
         }

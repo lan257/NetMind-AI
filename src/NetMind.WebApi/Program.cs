@@ -11,18 +11,20 @@ using NetMind.WebApi.Middleware;
 using NetMind.WebApi.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
+var appBaseUrl = builder.Configuration["App:BaseUrl"]
+    ?? throw new InvalidOperationException("必须配置 App:BaseUrl。");
 
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
     string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
 {
-    builder.WebHost.UseUrls("http://0.0.0.0:5119", "http://[::]:5119");
+    builder.WebHost.UseUrls(appBaseUrl);
 }
 
 builder.Services.AddControllers();
 builder.Services.AddSingleton<IAppLogger, AppLogger>();
 builder.Services.AddSingleton<IProjectStatusRepository, ProjectStatusRepository>();
 builder.Services.AddSingleton(_ => new PostgresConnectionFactory(
-builder.Configuration.GetConnectionString("Postgres") ?? string.Empty));
+    Environment.GetEnvironmentVariable("PGSTR") ?? string.Empty));
 builder.Services.AddScoped<IMindMapRepository, MindMapRepository>();
 builder.Services.AddScoped<INodeRepository, NodeRepository>();
 builder.Services.AddScoped<INodeRelationRepository, NodeRelationRepository>();
@@ -33,14 +35,16 @@ builder.Services.AddScoped<INodeService, NodeService>();
 builder.Services.AddScoped<INodeRelationService, NodeRelationService>();
 builder.Services.AddScoped<IMindMapTransferService, MindMapTransferService>();
 builder.Services.AddScoped<IAiConversationRecordService, AiConversationRecordService>();
+builder.Services.AddScoped<IAiAgentService, AiAgentService>();
 builder.Services.AddHttpClient<IAiCleanService, AiCleanService>();
-builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration));
+builder.Services.AddSingleton(LoadAiCleanOptions(builder.Configuration, builder.Environment.ContentRootPath));
+builder.Services.AddSingleton(LoadAiAgentOptions(builder.Configuration, builder.Environment.ContentRootPath, appBaseUrl));
 
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    StartFrontendDevServer(app);
+    StartFrontendDevServer(app, appBaseUrl);
 }
 
 app.UseMiddleware<ApiCallLoggingMiddleware>();
@@ -95,7 +99,7 @@ if (app.Environment.IsDevelopment())
 
 app.Run();
 
-static void StartFrontendDevServer(WebApplication app)
+static void StartFrontendDevServer(WebApplication app, string appBaseUrl)
 {
     const int frontendPort = 5173;
     if (IsFrontendDevServerRunning(frontendPort))
@@ -119,6 +123,7 @@ static void StartFrontendDevServer(WebApplication app)
     startInfo.RedirectStandardOutput = true;
     startInfo.RedirectStandardError = true;
     startInfo.CreateNoWindow = true;
+    startInfo.Environment["VITE_API_PROXY_TARGET"] = ResolveFrontendProxyTarget(app, appBaseUrl);
 
     try
     {
@@ -166,6 +171,20 @@ static void StartFrontendDevServer(WebApplication app)
     }
 }
 
+static string ResolveFrontendProxyTarget(WebApplication app, string fallbackUrl)
+{
+    var configuredUrls = app.Configuration["urls"]
+        ?? app.Configuration["ASPNETCORE_URLS"]
+        ?? string.Empty;
+
+    var candidates = app.Urls
+        .Concat(configuredUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .Append(fallbackUrl);
+
+    return candidates.FirstOrDefault(url => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        ?? candidates.First();
+}
+
 static bool IsFrontendDevServerRunning(int port)
 {
     return IsTcpPortOpen("127.0.0.1", port) || IsTcpPortOpen("::1", port);
@@ -185,7 +204,7 @@ static bool IsTcpPortOpen(string host, int port)
     }
 }
 
-static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration)
+static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string contentRootPath)
 {
     var promptSection = configuration.GetSection("AiClean:Prompt");
     var models = configuration.GetSection("AiClean:Models")
@@ -212,23 +231,141 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration)
         Prompt = new AiPromptOptions
         {
             ContextCompressionThreshold = ReadInt(promptSection["ContextCompressionThreshold"], 4000),
-            SystemPromptLines = promptSection.GetSection("SystemPromptLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            UserPromptTemplateLines = promptSection.GetSection("UserPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            RequirementPromptTemplateLines = promptSection.GetSection("RequirementPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            ContextChatPromptTemplateLines = promptSection.GetSection("ContextChatPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList(),
-            ContextCompressionPromptTemplateLines = promptSection.GetSection("ContextCompressionPromptTemplateLines").GetChildren()
-                .Select(section => section.Value ?? string.Empty)
-                .ToList()
+            SystemPromptLines = ReadPromptLines(promptSection, "System", "SystemPromptLines", contentRootPath),
+            UserPromptTemplateLines = ReadPromptLines(promptSection, "User", "UserPromptTemplateLines", contentRootPath),
+            RequirementPromptTemplateLines = ReadPromptLines(promptSection, "Requirement", "RequirementPromptTemplateLines", contentRootPath),
+            ContextChatPromptTemplateLines = ReadPromptLines(promptSection, "ContextChat", "ContextChatPromptTemplateLines", contentRootPath),
+            ContextCompressionPromptTemplateLines = ReadPromptLines(promptSection, "ContextCompression", "ContextCompressionPromptTemplateLines", contentRootPath),
+            NodeChatPromptTemplateLines = ReadPromptLines(promptSection, "NodeChat", "NodeChatPromptTemplateLines", contentRootPath),
+            NodeChatCompressionPromptTemplateLines = ReadPromptLines(promptSection, "NodeChatCompression", "NodeChatCompressionPromptTemplateLines", contentRootPath),
+            MapChatPromptTemplateLines = ReadPromptLines(promptSection, "MapChat", "MapChatPromptTemplateLines", contentRootPath),
+            AppHelpPromptTemplateLines = ReadPromptLines(promptSection, "AppHelp", "AppHelpPromptTemplateLines", contentRootPath),
+            AppManualLines = ReadPromptLines(promptSection, "AppManual", "AppManualLines", contentRootPath),
+            AppManualPath = ResolveOptionalPromptFilePath(promptSection, "AppManual", contentRootPath),
+            AppHelpLearningPath = ResolveOptionalPromptFilePath(promptSection, "AppHelpLearning", contentRootPath),
+            AppHelpUsageTipsPath = ResolveOptionalPromptFilePath(promptSection, "AppHelpUsageTips", contentRootPath)
         }
     };
+}
+
+static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration, string contentRootPath, string appBaseUrl)
+{
+    var section = configuration.GetSection("AiAgent");
+    return new AiAgentOptions
+    {
+        AgentBuildPath = section["AgentBuildPath"] ?? @"G:\AAW+\NetMind\AgentBuild",
+        PythonExecutable = section["PythonExecutable"] ?? "py",
+        TimeoutSeconds = ReadInt(section["TimeoutSeconds"], 120),
+        Temperature = ReadDouble(section["Temperature"], 0.2),
+        MaxTokens = ReadInt(section["MaxTokens"], 4096),
+        MaxRetries = ReadInt(section["MaxRetries"], 2),
+        NetMindApiBaseUrl = appBaseUrl,
+        SkillRuntimeTimeoutSeconds = ReadInt(section["SkillRuntimeTimeoutSeconds"], 10),
+        NodeQuestion = ReadAiAgentScenarioOptions(
+            section,
+            "NodeIdentity",
+            "NodeCues",
+            contentRootPath),
+        MapQuestion = ReadAiAgentScenarioOptions(
+            section,
+            "MapIdentity",
+            "MapCues",
+            contentRootPath),
+        GlobalQuestion = ReadAiAgentScenarioOptions(
+            section,
+            "GlobalIdentity",
+            "GlobalCues",
+            contentRootPath),
+        AppHelp = ReadAiAgentScenarioOptions(
+            section,
+            "AppHelpIdentity",
+            "AppHelpCues",
+            contentRootPath)
+    };
+}
+
+static AiAgentScenarioOptions ReadAiAgentScenarioOptions(
+    IConfigurationSection section,
+    string identityFileKey,
+    string cuesFileKey,
+    string contentRootPath)
+{
+    return new AiAgentScenarioOptions
+    {
+        DomainAndSkillBinding = "netmind",
+        IdentityLines = ReadRequiredPromptFileLines(section, identityFileKey, contentRootPath),
+        CuesLines = ReadRequiredPromptFileLines(section, cuesFileKey, contentRootPath)
+    };
+}
+
+static IReadOnlyList<string> ReadPromptLines(
+    IConfigurationSection promptSection,
+    string fileKey,
+    string legacyLinesKey,
+    string contentRootPath)
+{
+    var promptFile = promptSection.GetSection("PromptFiles")[fileKey];
+    if (!string.IsNullOrWhiteSpace(promptFile))
+    {
+        var filePath = ResolvePromptFilePath(contentRootPath, promptFile);
+        if (!File.Exists(filePath))
+        {
+            throw new InvalidOperationException($"AI Prompt 文件不存在：{filePath}");
+        }
+
+        return File.ReadAllLines(filePath);
+    }
+
+    return promptSection.GetSection(legacyLinesKey).GetChildren()
+        .Select(section => section.Value ?? string.Empty)
+        .ToList();
+}
+
+static IReadOnlyList<string> ReadRequiredPromptFileLines(
+    IConfigurationSection section,
+    string fileKey,
+    string contentRootPath)
+{
+    var promptFile = section.GetSection("PromptFiles")[fileKey];
+    if (string.IsNullOrWhiteSpace(promptFile))
+    {
+        throw new InvalidOperationException($"必须配置 AiAgent:PromptFiles:{fileKey}。");
+    }
+
+    var filePath = ResolvePromptFilePath(contentRootPath, promptFile);
+    if (!File.Exists(filePath))
+    {
+        throw new InvalidOperationException($"AI Prompt 文件不存在：{filePath}");
+    }
+
+    return File.ReadAllLines(filePath);
+}
+
+static string ResolvePromptFilePath(string contentRootPath, string promptFile)
+{
+    if (Path.IsPathRooted(promptFile))
+    {
+        return promptFile;
+    }
+
+    var contentRootCandidate = Path.GetFullPath(Path.Combine(contentRootPath, promptFile));
+    if (File.Exists(contentRootCandidate))
+    {
+        return contentRootCandidate;
+    }
+
+    return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, promptFile));
+}
+
+static string ResolveOptionalPromptFilePath(
+    IConfigurationSection promptSection,
+    string fileKey,
+    string contentRootPath)
+{
+    var promptFile = promptSection.GetSection("PromptFiles")[fileKey];
+    return string.IsNullOrWhiteSpace(promptFile)
+        ? string.Empty
+        : ResolvePromptFilePath(contentRootPath, promptFile);
 }
 
 static bool ReadBool(string? value)
@@ -239,4 +376,9 @@ static bool ReadBool(string? value)
 static int ReadInt(string? value, int fallback)
 {
     return int.TryParse(value, out var result) ? result : fallback;
+}
+
+static double ReadDouble(string? value, double fallback)
+{
+    return double.TryParse(value, out var result) ? result : fallback;
 }

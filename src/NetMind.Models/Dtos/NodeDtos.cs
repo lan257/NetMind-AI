@@ -6,6 +6,8 @@ public sealed class NodeDto
 
     public long MapId { get; init; }
 
+    public string? MapTitle { get; init; }
+
     public long? ParentId { get; init; }
 
     public string Title { get; init; } = string.Empty;
@@ -13,6 +15,10 @@ public sealed class NodeDto
     public string? Content { get; init; }
 
     public int OrderNo { get; init; }
+
+    public double? PositionX { get; init; }
+
+    public double? PositionY { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; }
 
@@ -30,6 +36,10 @@ public sealed class CreateNodeRequest
     public string? Content { get; init; }
 
     public int OrderNo { get; init; }
+
+    public double? PositionX { get; init; }
+
+    public double? PositionY { get; init; }
 }
 
 public sealed class UpdateNodeRequest
@@ -41,4 +51,8 @@ public sealed class UpdateNodeRequest
     public string? Content { get; init; }
 
     public int OrderNo { get; init; }
+
+    public double? PositionX { get; init; }
+
+    public double? PositionY { get; init; }
 }

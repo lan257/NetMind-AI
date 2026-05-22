@@ -2,12 +2,19 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <ApplicationIcon>NetMind.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\NetMind.Common\NetMind.Common.csproj" />
     <ProjectReference Include="..\NetMind.Models\NetMind.Models.csproj" />
     <ProjectReference Include="..\NetMind.Services\NetMind.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Config\AiCleanPrompts\*.prompt.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Config\AiCleanPrompts\app-help-learning-log.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Config\AiCleanPrompts\app-help-usage-tips.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

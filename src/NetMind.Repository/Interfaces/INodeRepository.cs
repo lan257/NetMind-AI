@@ -6,11 +6,15 @@ public interface INodeRepository
 {
     Task<IReadOnlyList<NodeEntity>> ListByMapAsync(long mapId);
 
+    Task<IReadOnlyList<NodeEntity>> SearchAsync(long? mapId, string keyword, int limit);
+
     Task<NodeEntity?> GetAsync(long id);
 
-    Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo);
+    Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId);
 
-    Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo);
+    Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY);
+
+    Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY);
 
     Task<int> DeleteSelfAsync(long id);
 

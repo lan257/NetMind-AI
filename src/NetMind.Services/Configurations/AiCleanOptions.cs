@@ -45,4 +45,20 @@ public sealed class AiPromptOptions
     public IReadOnlyList<string> ContextChatPromptTemplateLines { get; init; } = Array.Empty<string>();
 
     public IReadOnlyList<string> ContextCompressionPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> NodeChatPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> NodeChatCompressionPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> MapChatPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> AppHelpPromptTemplateLines { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> AppManualLines { get; init; } = Array.Empty<string>();
+
+    public string AppManualPath { get; init; } = string.Empty;
+
+    public string AppHelpLearningPath { get; init; } = string.Empty;
+
+    public string AppHelpUsageTipsPath { get; init; } = string.Empty;
 }

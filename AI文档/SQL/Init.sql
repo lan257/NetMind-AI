@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS node (
     title VARCHAR(200) NOT NULL,
     content TEXT NULL,
     order_no INTEGER NOT NULL DEFAULT 0,
+    position_x DOUBLE PRECISION NULL,
+    position_y DOUBLE PRECISION NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -67,6 +69,8 @@ CREATE TABLE IF NOT EXISTS node_meta (
     node_id BIGINT NOT NULL,
     key VARCHAR(100) NOT NULL,
     value TEXT NULL,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ NULL,
     CONSTRAINT pk_node_meta
         PRIMARY KEY (node_id, key),
     CONSTRAINT fk_node_meta_node
@@ -108,6 +112,12 @@ CREATE INDEX IF NOT EXISTS idx_node_title_content_fulltext
     ON node
     USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(content, '')))
     WHERE is_deleted = FALSE;
+
+ALTER TABLE node
+    ADD COLUMN IF NOT EXISTS position_x DOUBLE PRECISION;
+
+ALTER TABLE node
+    ADD COLUMN IF NOT EXISTS position_y DOUBLE PRECISION;
 
 CREATE INDEX IF NOT EXISTS idx_mind_map_not_deleted
     ON mind_map (id)
