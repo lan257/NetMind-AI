@@ -575,8 +575,28 @@ input[type="file"] {
   font-size: 15px;
 }
 
-.markdown-body ul {
+.markdown-body ul,
+.markdown-body ol {
   padding-left: 20px;
+}
+
+.markdown-body blockquote {
+  margin-left: 0;
+  padding: 8px 12px;
+  border-left: 3px solid #d7e1eb;
+  border-radius: 4px;
+  background: #f7f9fb;
+  color: #627386;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid #dce5ee;
+}
+
+.markdown-body del {
+  color: #6b7b8b;
+  text-decoration-color: #96a6b6;
 }
 
 .markdown-body code {
