@@ -111,7 +111,7 @@ onMounted(async () => {
           @refresh-nodes="workspace.refreshSelectedMapData('节点列表已刷新')"
         />
         <KnowledgeCard
-          :node="previewNode"
+          :node="workMode === 'workbench' ? workspace.selectedNode.value : previewNode"
           :nodes="workspace.nodes.value"
           :relations="workspace.relations.value"
           :current-map-id="workspace.selectedMap.value?.id"

@@ -21,6 +21,14 @@ const currentNode = ref(null);
 const currentRelations = ref([]);
 const loading = ref(false);
 
+function mergeRelations(mapRelations, nodeRelations) {
+  const relationById = new Map();
+  [...mapRelations, ...nodeRelations].forEach((relation) => {
+    relationById.set(relation.id ?? `${relation.sourceId}-${relation.targetId}-${relation.relationType}`, relation);
+  });
+  return [...relationById.values()];
+}
+
 // 当外部 node 变化时，重置历史并加载初始数据
 watch(() => props.node, (val) => {
   if (val) {
@@ -51,7 +59,7 @@ async function loadNodeData(node) {
     }
     
     if (relationResult) {
-      currentRelations.value = relationResult;
+      currentRelations.value = mergeRelations(props.relations, relationResult);
     }
   } catch (err) {
     console.error('Failed to load node preview data:', err);
@@ -150,13 +158,14 @@ function handleContentClick(event) {
       <section class="relation-preview">
         <div class="section-heading">
           <h2>关联图谱</h2>
-          <el-button :icon="FullScreen" :disabled="!currentNode" @click="graphOpen = true">放大</el-button>
+          <el-button :icon="FullScreen" :disabled="!currentNode" @click="graphOpen = true">详情大图</el-button>
         </div>
         <RelationGraphCanvas
           :center-node="currentNode"
           :nodes="nodes"
           :relations="currentRelations"
           :height="240"
+          :show-labels="false"
           :node-draggable="false"
           @preview-node="navigateTo"
         />

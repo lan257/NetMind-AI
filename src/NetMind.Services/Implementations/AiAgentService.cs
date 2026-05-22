@@ -543,6 +543,9 @@ public sealed class AiAgentService : IAiAgentService
         var learningPath = string.IsNullOrWhiteSpace(_aiOptions.Prompt.AppHelpLearningPath)
             ? "应用帮助学习记录路径未配置。"
             : _aiOptions.Prompt.AppHelpLearningPath;
+        var usageTipsPath = string.IsNullOrWhiteSpace(_aiOptions.Prompt.AppHelpUsageTipsPath)
+            ? "应用帮助使用技巧路径未配置。"
+            : _aiOptions.Prompt.AppHelpUsageTipsPath;
 
         return new Dictionary<string, object?>
         {
@@ -558,6 +561,8 @@ public sealed class AiAgentService : IAiAgentService
             ["manual_access_policy"] = "说明书是管理员维护的正式文档；Agent 只能读取说明书，不允许直接修改说明书原文。",
             ["learning_log_absolute_path"] = learningPath,
             ["learning_log_update_policy"] = "对话中学到稳定的软件操作、限制、排障步骤或说明缺口时，只能向学习记录追加增量内容；不允许删除、覆盖或重写已有学习经验。管理员后续统一筛选并维护正式说明书。",
+            ["usage_tips_absolute_path"] = usageTipsPath,
+            ["usage_tips_update_policy"] = "确认技巧稳定且可复用后，Agent 可使用 incremental_file_modifier 对使用技巧文档做小范围增量维护；允许补充、修正和合并技巧，但不能改写正式说明书。",
             ["chat_history"] = string.IsNullOrWhiteSpace(chatHistory) ? "（无历史上下文）" : chatHistory,
             ["context_budget"] = new Dictionary<string, object?>
             {

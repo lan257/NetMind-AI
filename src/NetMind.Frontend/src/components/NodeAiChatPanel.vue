@@ -380,6 +380,10 @@ function isWaitingPermission(call) {
 
 .node-ai-chat-panel {
   width: 320px;
+  height: min(520px, calc(100vh - 156px));
+  min-width: 300px;
+  max-width: min(720px, calc(100vw - 32px));
+  min-height: 320px;
   max-height: calc(100vh - 156px);
   display: flex;
   flex-direction: column;
@@ -388,6 +392,7 @@ function isWaitingPermission(call) {
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.08);
   overflow: hidden;
+  resize: both;
 }
 
 .chat-panel-header {
@@ -445,7 +450,6 @@ function isWaitingPermission(call) {
 .chat-messages {
   flex: 1;
   min-height: 120px;
-  max-height: 300px;
   overflow-y: auto;
   padding: 8px 10px;
   display: flex;

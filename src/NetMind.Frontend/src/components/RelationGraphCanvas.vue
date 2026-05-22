@@ -7,7 +7,8 @@ const props = defineProps({
   relations: { type: Array, default: () => [] },
   height: { type: Number, default: 240 },
   interactive: { type: Boolean, default: true },
-  nodeDraggable: { type: Boolean, default: true }
+  nodeDraggable: { type: Boolean, default: true },
+  showLabels: { type: Boolean, default: true }
 });
 
 const emit = defineEmits(['preview-node']);
@@ -15,7 +16,7 @@ const emit = defineEmits(['preview-node']);
 const canvasRef = ref(null);
 const wrapRef = ref(null);
 const hitRegions = ref([]);
-const hoverNodeId = ref(null);
+const hoverNodeKey = ref(null);
 const manualPositions = ref(new Map());
 const viewport = ref({ x: 0, y: 0, scale: 1 });
 let resizeObserver = null;
@@ -50,38 +51,75 @@ const nodeById = computed(() => {
   return result;
 });
 
-const relationGraph = computed(() => {
-  if (!props.centerNode) {
-    return { nodes: [], links: [], depthById: new Map() };
-  }
+function createBranchNode(node, key, depth, parentKey = null) {
+  return {
+    key,
+    id: node.id,
+    node,
+    depth,
+    parentKey
+  };
+}
 
-  const included = new Set([props.centerNode.id]);
-  const depthById = new Map([[props.centerNode.id, 0]]);
-  let frontier = new Set([props.centerNode.id]);
+function getRelatedBranches(nodeId, excludedNodeId = null) {
+  return props.relations
+    .map((relation, index) => {
+      const relatedId = relation.sourceId === nodeId
+        ? relation.targetId
+        : relation.targetId === nodeId
+          ? relation.sourceId
+          : null;
 
-  for (let depth = 0; depth < 2; depth += 1) {
-    const next = new Set();
-    props.relations.forEach((relation) => {
-      if (frontier.has(relation.sourceId) && nodeById.value.has(relation.targetId)) {
-        next.add(relation.targetId);
+      if (relatedId == null || relatedId === excludedNodeId) {
+        return null;
       }
-      if (frontier.has(relation.targetId) && nodeById.value.has(relation.sourceId)) {
-        next.add(relation.sourceId);
-      }
-    });
-    const nextFrontier = new Set([...next].filter((id) => !included.has(id)));
-    nextFrontier.forEach((id) => {
-      included.add(id);
-      depthById.set(id, depth + 1);
-    });
-    frontier = nextFrontier;
-  }
 
-  const graphNodes = [...included]
-    .map((id) => nodeById.value.get(id))
+      const relatedNode = nodeById.value.get(relatedId);
+      return relatedNode ? { relation, relatedNode, index } : null;
+    })
     .filter(Boolean);
-  const links = props.relations.filter((relation) => included.has(relation.sourceId) && included.has(relation.targetId));
-  return { nodes: graphNodes, links, depthById };
+}
+
+function createOccurrenceKey(parentKey, branch, siblingIndex) {
+  const relationKey = branch.relation.id ?? `${branch.relation.sourceId}-${branch.relation.targetId}-${branch.index}`;
+  return `${parentKey}-${relationKey}-${branch.relatedNode.id}-${siblingIndex}`;
+}
+
+const relationTree = computed(() => {
+  if (!props.centerNode) {
+    return { nodes: [], links: [] };
+  }
+
+  const center = createBranchNode(props.centerNode, 'center', 0);
+  const nodes = [center];
+  const links = [];
+
+  getRelatedBranches(props.centerNode.id).forEach((branch, index) => {
+    const firstKey = createOccurrenceKey(center.key, branch, index);
+    const firstNode = createBranchNode(branch.relatedNode, firstKey, 1, center.key);
+    nodes.push(firstNode);
+    links.push({
+      key: `${center.key}-${firstKey}`,
+      sourceKey: center.key,
+      targetKey: firstKey,
+      relation: branch.relation,
+      depth: 1
+    });
+
+    getRelatedBranches(firstNode.id, props.centerNode.id).forEach((childBranch, childIndex) => {
+      const childKey = createOccurrenceKey(firstKey, childBranch, childIndex);
+      nodes.push(createBranchNode(childBranch.relatedNode, childKey, 2, firstKey));
+      links.push({
+        key: `${firstKey}-${childKey}`,
+        sourceKey: firstKey,
+        targetKey: childKey,
+        relation: childBranch.relation,
+        depth: 2
+      });
+    });
+  });
+
+  return { nodes, links };
 });
 
 function scheduleDraw() {
@@ -89,26 +127,53 @@ function scheduleDraw() {
   rafId = window.requestAnimationFrame(() => drawCanvas());
 }
 
-function basePosition(node, index, total, width, height) {
-  if (node.id === props.centerNode?.id) {
-    return { x: 0, y: 0 };
-  }
-
-  const depth = relationGraph.value.depthById.get(node.id) ?? 1;
-  const available = Math.min(width, height);
-  const radius = Math.min(
-    available * (depth === 1 ? 0.42 : 0.62),
-    depth === 1 ? 180 : 280
-  );
-  const ringNodes = relationGraph.value.nodes.filter((item) => (relationGraph.value.depthById.get(item.id) ?? 1) === depth);
-  const ringIndex = ringNodes.findIndex((item) => item.id === node.id);
-  const angleOffset = depth === 1 ? -Math.PI / 2 : -Math.PI / 2 + Math.PI / Math.max(ringNodes.length, 2);
-  const angle = ((Math.PI * 2) / Math.max(ringNodes.length, 1)) * Math.max(ringIndex, 0) + angleOffset;
-  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+function getNodeRadius(node) {
+  const labeledRadii = [22, 17, 13];
+  const compactRadii = [15, 10, 8];
+  const radii = props.showLabels ? labeledRadii : compactRadii;
+  return radii[node.depth] ?? radii[2];
 }
 
-function getNodePosition(node, index, total, width, height) {
-  return manualPositions.value.get(node.id) ?? basePosition(node, index, total, width, height);
+function createLayoutPositions(width, height) {
+  const positions = new Map();
+  const centerNode = relationTree.value.nodes.find((node) => node.depth === 0);
+  if (!centerNode) {
+    return positions;
+  }
+
+  const centerPosition = manualPositions.value.get(centerNode.key) ?? { x: 0, y: 0 };
+  positions.set(centerNode.key, centerPosition);
+
+  const outerPadding = props.showLabels ? 68 : 28;
+  const outerRadius = Math.max(44, Math.min(width, height) / 2 - outerPadding);
+  const firstRingRadius = outerRadius * 0.58;
+  const childRingRadius = outerRadius * 0.34;
+  const firstRingNodes = relationTree.value.nodes.filter((node) => node.depth === 1);
+
+  firstRingNodes.forEach((node, index) => {
+    const angle = ((Math.PI * 2) / Math.max(firstRingNodes.length, 1)) * index - Math.PI / 2;
+    const base = {
+      x: centerPosition.x + Math.cos(angle) * firstRingRadius,
+      y: centerPosition.y + Math.sin(angle) * firstRingRadius
+    };
+    const position = manualPositions.value.get(node.key) ?? base;
+    positions.set(node.key, position);
+
+    const children = relationTree.value.nodes.filter((child) => child.parentKey === node.key);
+    children.forEach((child, childIndex) => {
+      const spread = children.length === 1 ? 0 : Math.min(Math.PI * 0.92, Math.PI / 4 + children.length * 0.2);
+      const childAngle = children.length === 1
+        ? angle
+        : angle - spread / 2 + (spread * childIndex) / Math.max(children.length - 1, 1);
+      const childBase = {
+        x: position.x + Math.cos(childAngle) * childRingRadius,
+        y: position.y + Math.sin(childAngle) * childRingRadius
+      };
+      positions.set(child.key, manualPositions.value.get(child.key) ?? childBase);
+    });
+  });
+
+  return positions;
 }
 
 function toScreen(point, width, height) {
@@ -166,7 +231,7 @@ function drawCanvas() {
   hitRegions.value = [];
   drawGrid(ctx, width, height);
 
-  if (!props.centerNode || relationGraph.value.nodes.length === 0) {
+  if (!props.centerNode || relationTree.value.nodes.length === 0) {
     ctx.fillStyle = '#6a7b8c';
     ctx.font = '14px "Microsoft YaHei", "Segoe UI", Arial';
     ctx.textAlign = 'center';
@@ -175,28 +240,27 @@ function drawCanvas() {
     return;
   }
 
-  const positions = new Map();
-  relationGraph.value.nodes.forEach((node, index) => {
-    positions.set(node.id, getNodePosition(node, index, relationGraph.value.nodes.length, width, height));
-  });
+  const positions = createLayoutPositions(width, height);
+  const nodeByKey = new Map(relationTree.value.nodes.map((node) => [node.key, node]));
 
-  relationGraph.value.links.forEach((relation) => {
-    const source = positions.get(relation.sourceId);
-    const target = positions.get(relation.targetId);
-    if (!source || !target) {
+  relationTree.value.links.forEach((link) => {
+    const source = positions.get(link.sourceKey);
+    const target = positions.get(link.targetKey);
+    const sourceNode = nodeByKey.get(link.sourceKey);
+    const targetNode = nodeByKey.get(link.targetKey);
+    if (!source || !target || !sourceNode || !targetNode) {
       return;
     }
     const start = toScreen(source, width, height);
     const end = toScreen(target, width, height);
     
-    // 计算箭头位置
+    // 缩短连线到圆圈边缘。
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const angle = Math.atan2(dy, dx);
-    const sourceRadius = (relation.sourceId === props.centerNode?.id ? 28 : (relationGraph.value.depthById.get(relation.sourceId) === 1 ? 22 : 18)) * viewport.value.scale;
-    const targetRadius = (relation.targetId === props.centerNode?.id ? 28 : (relationGraph.value.depthById.get(relation.targetId) === 1 ? 22 : 18)) * viewport.value.scale;
+    const sourceRadius = getNodeRadius(sourceNode) * viewport.value.scale;
+    const targetRadius = getNodeRadius(targetNode) * viewport.value.scale;
     
-    // 缩短线条，使其始于并止于圆圈边缘
     const lineStartX = start.x + Math.cos(angle) * sourceRadius;
     const lineStartY = start.y + Math.sin(angle) * sourceRadius;
     const lineEndX = end.x - Math.cos(angle) * targetRadius;
@@ -206,52 +270,55 @@ function drawCanvas() {
     ctx.moveTo(lineStartX, lineStartY);
     ctx.lineTo(lineEndX, lineEndY);
     ctx.strokeStyle = '#8ab7d8';
-    ctx.lineWidth = Math.max(1, 2 * viewport.value.scale);
+    ctx.lineWidth = Math.max(0.9, (link.depth === 1 ? 1.8 : 1.35) * viewport.value.scale);
     ctx.stroke();
 
-    // 绘制箭头
-    const arrowSize = 8 * viewport.value.scale;
-    ctx.beginPath();
-    ctx.moveTo(lineEndX, lineEndY);
-    ctx.lineTo(lineEndX - arrowSize * Math.cos(angle - Math.PI / 6), lineEndY - arrowSize * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(lineEndX - arrowSize * Math.cos(angle + Math.PI / 6), lineEndY - arrowSize * Math.sin(angle + Math.PI / 6));
-    ctx.closePath();
-    ctx.fillStyle = '#8ab7d8';
-    ctx.fill();
-
-    const midX = (start.x + end.x) / 2;
-    const midY = (start.y + end.y) / 2;
-    ctx.fillStyle = '#60798e';
-    ctx.font = '12px "Microsoft YaHei", "Segoe UI", Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(relation.relationType ?? '关联', midX, midY - 6);
+    if (props.showLabels) {
+      const midX = (start.x + end.x) / 2;
+      const midY = (start.y + end.y) / 2;
+      ctx.fillStyle = '#60798e';
+      ctx.font = `${link.depth === 1 ? 12 : 11}px "Microsoft YaHei", "Segoe UI", Arial`;
+      ctx.textAlign = 'center';
+      ctx.fillText(link.relation.relationType ?? '关联', midX, midY - 6);
+    }
   });
 
-  relationGraph.value.nodes.forEach((node, index) => {
-    const point = positions.get(node.id);
+  relationTree.value.nodes.forEach((node) => {
+    const point = positions.get(node.key);
+    if (!point) {
+      return;
+    }
     const screen = toScreen(point, width, height);
-    const isCenter = node.id === props.centerNode.id;
-    const nodeDepth = relationGraph.value.depthById.get(node.id) ?? 1;
-    const radius = (isCenter ? 28 : nodeDepth === 1 ? 22 : 18) * viewport.value.scale;
-    const hovering = node.id === hoverNodeId.value;
+    const isCenter = node.depth === 0;
+    const radius = getNodeRadius(node) * viewport.value.scale;
+    const hovering = node.key === hoverNodeKey.value;
 
     ctx.beginPath();
     ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = isCenter ? '#ecf5ff' : node.isExternal ? '#f9f9f9' : '#ffffff';
+    ctx.fillStyle = isCenter ? '#ecf5ff' : node.node.isExternal ? '#f9f9f9' : '#ffffff';
     ctx.fill();
     ctx.lineWidth = hovering || isCenter ? 2.4 : 1.4;
-    ctx.setLineDash(node.isExternal ? [4, 4] : []);
+    ctx.setLineDash(node.node.isExternal ? [4, 4] : []);
     ctx.strokeStyle = isCenter ? '#409eff' : hovering ? '#409eff' : '#cbd7e2';
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.fillStyle = '#25384a';
-    ctx.font = `${isCenter ? 700 : 600} ${Math.max(11, 13 * viewport.value.scale)}px "Microsoft YaHei", "Segoe UI", Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const title = String(node.title ?? '未命名节点');
-    ctx.fillText(title.length > 8 ? `${title.slice(0, 8)}...` : title, screen.x, screen.y);
-    hitRegions.value.push({ node, x: screen.x, y: screen.y, radius });
+    if (props.showLabels) {
+      ctx.fillStyle = '#25384a';
+      ctx.font = `${isCenter ? 700 : 600} ${Math.max(11, (isCenter ? 13 : 12) * viewport.value.scale)}px "Microsoft YaHei", "Segoe UI", Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const title = String(node.node.title ?? '未命名节点');
+      ctx.fillText(title.length > 10 ? `${title.slice(0, 10)}...` : title, screen.x, screen.y + radius + 12);
+    }
+    hitRegions.value.push({
+      graphNode: node,
+      node: node.node,
+      key: node.key,
+      x: screen.x,
+      y: screen.y,
+      radius: Math.max(radius, props.showLabels ? radius : 12)
+    });
   });
 }
 
@@ -286,7 +353,7 @@ function handlePointerDown(event) {
 
   interaction = {
     type: hit && props.nodeDraggable ? 'node' : 'pan',
-    node: hit?.node ?? null,
+    graphNode: hit?.graphNode ?? null,
     startX: point.x,
     startY: point.y,
     moved: false,
@@ -319,19 +386,19 @@ function handlePointerMove(event) {
     return;
   }
 
-  if (props.interactive && props.nodeDraggable && interaction?.type === 'node' && interaction.node) {
+  if (props.interactive && props.nodeDraggable && interaction?.type === 'node' && interaction.graphNode) {
     const world = toWorld(point, width, height);
     const next = new Map(manualPositions.value);
-    next.set(interaction.node.id, world);
+    next.set(interaction.graphNode.key, world);
     manualPositions.value = next;
     scheduleDraw();
     return;
   }
 
   const hit = findHit(event);
-  const nextHoverId = hit?.node.id ?? null;
-  if (nextHoverId !== hoverNodeId.value) {
-    hoverNodeId.value = nextHoverId;
+  const nextHoverKey = hit?.key ?? null;
+  if (nextHoverKey !== hoverNodeKey.value) {
+    hoverNodeKey.value = nextHoverKey;
     scheduleDraw();
   }
 }

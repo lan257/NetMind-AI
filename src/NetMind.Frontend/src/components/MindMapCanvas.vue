@@ -24,6 +24,7 @@ const hitRegions = ref([]);
 const actionRegions = ref([]);
 const manualPositions = ref(new Map());
 const unsavedPositionIds = ref(new Set());
+const collapsedNodeIds = ref(new Set());
 const viewport = ref({ x: 0, y: 0, scale: 1 });
 const editorForm = ref({ title: '', content: '', orderNo: 1 });
 let resizeObserver = null;
@@ -123,7 +124,7 @@ function getChildrenByParent() {
 
 function countSubtreeLeaves(node, childrenByParent) {
   const children = childrenByParent.get(node.id) ?? [];
-  if (children.length === 0) {
+  if (children.length === 0 || collapsedNodeIds.value.has(node.id)) {
     return 1;
   }
   return children.reduce((total, child) => total + countSubtreeLeaves(child, childrenByParent), 0);
@@ -189,7 +190,9 @@ function createLayout(ctx) {
       width: widthValue,
       height: heightValue,
       lines,
-      direction
+      direction,
+      childCount: (childrenByParent.get(node.id) ?? []).length,
+      collapsed: collapsedNodeIds.value.has(node.id)
     };
     layoutNodes.push(graphNode);
     return graphNode;
@@ -200,7 +203,8 @@ function createLayout(ctx) {
     let cursor = -((Math.max(totalLeaves, 1) - 1) * leafGap) / 2;
 
     const walk = (node, parent, depth) => {
-      const children = childrenByParent.get(node.id) ?? [];
+      const allChildren = childrenByParent.get(node.id) ?? [];
+      const children = collapsedNodeIds.value.has(node.id) ? [] : allChildren;
       const leafCount = countSubtreeLeaves(node, childrenByParent);
       const startY = cursor;
       const endY = cursor + Math.max(leafCount - 1, 0) * leafGap;
@@ -358,9 +362,15 @@ function drawNode(ctx, node, width, height) {
   if (!node.isRoot) {
     hitRegions.value.push({ id: node.id, node, left, top, right: left + boxWidth, bottom: top + boxHeight });
 
+    const direction = node.direction ?? 1;
+    if (node.childCount > 0 && (node.collapsed || selected)) {
+      const toggleX = direction >= 0 ? left + boxWidth + 8 : left - 8;
+      drawSubtreeToggle(ctx, toggleX, center.y, node.collapsed ? '+' : '-');
+      actionRegions.value.push({ type: 'toggle-subtree', node, x: toggleX, y: center.y, radius: 8 });
+    }
+
     if (props.editable && (hovering || selected)) {
-      const direction = node.direction ?? 1;
-      const actionX = direction >= 0 ? left + boxWidth + 14 : left - 14;
+      const actionX = direction >= 0 ? left + boxWidth + 32 : left - 32;
       const addY = center.y - 12;
       const deleteY = center.y + 12;
       drawActionButton(ctx, actionX, addY, '+', '#409eff');
@@ -387,6 +397,23 @@ function drawActionButton(ctx, x, y, label, color) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, x, y - 1);
+  ctx.restore();
+}
+
+function drawSubtreeToggle(ctx, x, y, label) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = '#4f7898';
+  ctx.stroke();
+  ctx.fillStyle = '#4f7898';
+  ctx.font = '700 11px "Microsoft YaHei", "Segoe UI", Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y - 0.5);
   ctx.restore();
 }
 
@@ -537,6 +564,10 @@ function handlePointerUp(event) {
 
   if (current.type === 'action') {
     emit('select-node', current.node.id);
+    if (current.action?.type === 'toggle-subtree') {
+      toggleSubtree(current.node.id);
+      return;
+    }
     if (current.action?.type === 'add-child') {
       emit('create-node', { parentId: current.node.id, title: '新子节点', content: '', orderNo: props.nodes.length + 1 });
     }
@@ -573,8 +604,32 @@ function handleWheel(event) {
 function resetView() {
   manualPositions.value = new Map();
   unsavedPositionIds.value = new Set();
+  collapsedNodeIds.value = new Set();
   fitView();
   emit('refresh-map');
+}
+
+function toggleSubtree(nodeId) {
+  const next = new Set(collapsedNodeIds.value);
+  if (next.has(nodeId)) {
+    next.delete(nodeId);
+  } else {
+    next.add(nodeId);
+  }
+  collapsedNodeIds.value = next;
+  scheduleDraw();
+}
+
+function pruneCollapsedNodes() {
+  if (collapsedNodeIds.value.size === 0) {
+    return;
+  }
+
+  const nodeIds = new Set(props.nodes.map((node) => node.id));
+  const next = new Set([...collapsedNodeIds.value].filter((id) => nodeIds.has(id)));
+  if (next.size !== collapsedNodeIds.value.size) {
+    collapsedNodeIds.value = next;
+  }
 }
 
 function createRootNode() {
@@ -646,9 +701,14 @@ watch(() => [props.map?.id, props.nodes.length], async () => {
 });
 
 watch(() => [props.nodes, props.relations, props.selectedNodeId], () => {
+  pruneCollapsedNodes();
   clearSavedPositionFlags();
   scheduleDraw();
 }, { deep: true });
+
+watch(() => props.map?.id, () => {
+  collapsedNodeIds.value = new Set();
+});
 
 watch(selectedNode, (node) => {
   editorForm.value = node

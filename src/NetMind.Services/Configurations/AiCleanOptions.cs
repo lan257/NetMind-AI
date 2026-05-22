@@ -59,4 +59,6 @@ public sealed class AiPromptOptions
     public string AppManualPath { get; init; } = string.Empty;
 
     public string AppHelpLearningPath { get; init; } = string.Empty;
+
+    public string AppHelpUsageTipsPath { get; init; } = string.Empty;
 }

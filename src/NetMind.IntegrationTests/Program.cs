@@ -96,12 +96,21 @@ var aiAgentService = new AiAgentService(
         NetMindApiBaseUrl = "http://127.0.0.1:5120/",
         SkillRuntimeTimeoutSeconds = 9
     },
-    new AiCleanOptions(),
+    new AiCleanOptions
+    {
+        Prompt = new AiPromptOptions
+        {
+            AppManualPath = @"C:\NetMind\Config\AiCleanPrompts\directions-help.prompt.md",
+            AppHelpLearningPath = @"C:\NetMind\Config\AiCleanPrompts\app-help-learning-log.md",
+            AppHelpUsageTipsPath = @"C:\NetMind\Config\AiCleanPrompts\app-help-usage-tips.md"
+        }
+    },
     null!,
     stubNodeRepo,
     stubRelationRepo,
     NullAppLogger.Instance);
 AssertKernelV2RequestContract(aiAgentService);
+AssertAppHelpFocusContext(aiAgentService);
 
 var connectionString = Environment.GetEnvironmentVariable("NETMIND_TEST_POSTGRES_CONNECTION");
 if (string.IsNullOrWhiteSpace(connectionString))
@@ -218,6 +227,31 @@ static void AssertKernelV2RequestContract(AiAgentService service)
 
     var focusContext = agentContext["focus_context"] as Dictionary<string, object?>;
     Assert(focusContext?["domain"] as string == "netmind", "Agent focus context should expose the v2 domain name.");
+}
+
+static void AssertAppHelpFocusContext(AiAgentService service)
+{
+    var buildFocusContext = typeof(AiAgentService).GetMethod(
+        "BuildAppHelpFocusContext",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+    Assert(buildFocusContext is not null, "App help focus context builder should be available for contract checks.");
+
+    var rawResult = buildFocusContext!.Invoke(service, new object[]
+    {
+        "history",
+        2048,
+        10.0,
+        "healthy"
+    });
+    Assert(rawResult is Dictionary<string, object?>, "App help focus context should be a dictionary.");
+
+    var focusContext = (Dictionary<string, object?>)rawResult!;
+    Assert(
+        focusContext["usage_tips_absolute_path"] as string == @"C:\NetMind\Config\AiCleanPrompts\app-help-usage-tips.md",
+        "App help focus context should expose the usage tips path.");
+    Assert(
+        (focusContext["usage_tips_update_policy"] as string)?.Contains("incremental_file_modifier") == true,
+        "App help usage tips policy should name the incremental modifier tool.");
 }
 
 static JsonElement Json(string text)

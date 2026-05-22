@@ -34,6 +34,14 @@ const searching = ref(false);
 const showRefDialog = ref(false);
 const refTriggerPos = ref({ start: -1, end: -1 });
 
+function mergeRelations(mapRelations, nodeRelations) {
+  const relationById = new Map();
+  [...mapRelations, ...nodeRelations].forEach((relation) => {
+    relationById.set(relation.id ?? `${relation.sourceId}-${relation.targetId}-${relation.relationType}`, relation);
+  });
+  return [...relationById.values()];
+}
+
 watch(() => props.node, async (val) => {
   if (val) {
     navHistory.value = [val];
@@ -56,7 +64,7 @@ async function loadNodeData(node) {
       api(`/api/node-relations/by-node/${node.id}`)
     ]);
     if (nodeResult) currentNode.value = nodeResult;
-    if (relationResult) currentRelations.value = relationResult;
+    if (relationResult) currentRelations.value = mergeRelations(props.relations, relationResult);
   } catch (err) {
     console.error('Failed to load node data:', err);
   } finally {
@@ -190,13 +198,14 @@ function jumpToMap() {
         <section class="relation-section">
           <div class="relation-section-heading">
             <span>关联图谱</span>
-            <el-button :icon="FullScreen" size="small" :disabled="!currentNode" @click="graphOpen = true">放大</el-button>
+            <el-button :icon="FullScreen" size="small" :disabled="!currentNode" @click="graphOpen = true">详情大图</el-button>
           </div>
           <RelationGraphCanvas
             :center-node="currentNode"
             :nodes="nodes"
             :relations="currentRelations"
-            :height="180"
+            :height="240"
+            :show-labels="false"
             :node-draggable="false"
             @preview-node="(n) => navigateTo(n)"
           />
@@ -252,7 +261,7 @@ function jumpToMap() {
   </el-dialog>
 
   <!-- relation graph enlarge dialog -->
-  <el-dialog v-model="graphOpen" title="关联图谱" width="640px" class="relation-graph-dialog">
+  <el-dialog v-model="graphOpen" title="关联图谱" width="min(1080px, calc(100vw - 32px))" class="relation-graph-dialog">
     <RelationGraphCanvas :center-node="currentNode" :nodes="nodes" :relations="currentRelations" :height="620" :node-draggable="false" @preview-node="(n) => navigateTo(n)" />
   </el-dialog>
 </template>

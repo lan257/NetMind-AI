@@ -242,7 +242,8 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
             AppHelpPromptTemplateLines = ReadPromptLines(promptSection, "AppHelp", "AppHelpPromptTemplateLines", contentRootPath),
             AppManualLines = ReadPromptLines(promptSection, "AppManual", "AppManualLines", contentRootPath),
             AppManualPath = ResolveOptionalPromptFilePath(promptSection, "AppManual", contentRootPath),
-            AppHelpLearningPath = ResolveOptionalPromptFilePath(promptSection, "AppHelpLearning", contentRootPath)
+            AppHelpLearningPath = ResolveOptionalPromptFilePath(promptSection, "AppHelpLearning", contentRootPath),
+            AppHelpUsageTipsPath = ResolveOptionalPromptFilePath(promptSection, "AppHelpUsageTips", contentRootPath)
         }
     };
 }

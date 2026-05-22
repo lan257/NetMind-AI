@@ -1,6 +1,15 @@
 # AI 大模型配置说明
 
-更新时间：2026-05-21
+更新时间：2026-05-22
+
+## P6.1.3 新增：应用帮助使用技巧自维护
+
+P6.1.3 在应用帮助的追加型学习记录之外，新增一份可持续整理的使用技巧文档，供应用帮助 Agent 沉淀稳定经验。
+
+- **使用技巧配置**：`AiClean:Prompt:PromptFiles:AppHelpUsageTips` 指向 `Config/AiCleanPrompts/app-help-usage-tips.md`。
+- **使用技巧传递方式**：后端在 `context.focus_context.usage_tips_absolute_path` 中传入使用技巧文档绝对路径，并附带维护策略。
+- **维护方式**：应用帮助 Agent Prompt 允许在确认技巧稳定后，对使用技巧文档调用 `incremental_file_modifier` 做小范围增量维护，可补充、修正和合并技巧。
+- **边界**：正式说明书仍只读；`app-help-learning-log.md` 继续承接追加型学习线索，不能被使用技巧维护流程重写。
 
 ## P6.0 新增：Agent Kernel API v2 适配
 
@@ -179,6 +188,7 @@ P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettin
 | `AppHelpIdentity` | `app-help-agent-identity.prompt.md` | 应用帮助 Agent 身份提示。 |
 | `AppHelpCues` | `app-help-agent-cues.prompt.md` | 应用帮助 Agent 补充提示。 |
 | `AppHelpLearning` | `app-help-learning-log.md` | 应用帮助 Agent 学习记录，只允许追加增量经验。 |
+| `AppHelpUsageTips` | `app-help-usage-tips.md` | 应用帮助 Agent 使用技巧，可用 `incremental_file_modifier` 增量维护。 |
 
 Prompt 文件会随 `NetMind.WebApi` 构建复制到输出目录。发布包如果直接运行，也需要保留 `Config/AiCleanPrompts/` 目录。
 
