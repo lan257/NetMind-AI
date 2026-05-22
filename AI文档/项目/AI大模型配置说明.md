@@ -235,10 +235,10 @@ $env:DEEPSEEK_API_KEY="你的真实密钥"
 
 ## 数据库配置
 
-数据库连接字符串位于配置文件，生产环境建议同样使用环境变量覆盖：
+数据库连接字符串通过 `PGSTR` 环境变量传入：
 
 ```powershell
-$env:ConnectionStrings__Postgres="Host=127.0.0.1;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
+$env:PGSTR="Host=127.0.0.1;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
 ```
 
 运行接口前需要先创建 PostgreSQL 数据库并执行：

@@ -205,7 +205,7 @@ AI 对话自动管理上下文长度，分为四级：
 A：请检查 AI 模型配置。如果使用 DeepSeek Cloud，确保已设置 `DEEPSEEK_API_KEY` 环境变量。如果使用 Ollama，确保本机 Ollama 服务已启动且模型已拉取。
 
 **Q：无法连接数据库？**
-A：检查 PostgreSQL 服务是否运行，确认 `appsettings.json` 中的连接字符串与本地环境匹配。可以通过环境变量 `ConnectionStrings__Postgres` 覆盖默认配置。
+A：检查 PostgreSQL 服务是否运行，并确认 `PGSTR` 环境变量中是可用的完整连接字符串。
 
 **Q：节点删除后能恢复吗？**
 A：当前使用逻辑删除（软删除），数据在数据库中仍保留。如需物理删除，请联系管理员操作数据库。

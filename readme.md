@@ -24,10 +24,10 @@ NetMind 是一个基于 AI 的知识网络构建与可视化工具，用于把�
 3. 执行 `AI文档/SQL/Init.sql`。
 4. 如需从旧库升级，按文件名顺序执行 `AI文档/SQL/P*.sql` 迁移脚本。
 
-默认连接字符串位于 `src/NetMind.WebApi/appsettings.json`：
+运行前通过 `PGSTR` 环境变量提供完整连接字符串：
 
-```text
-Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=admin;
+```powershell
+$env:PGSTR="Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=admin;"
 ```
 
 ### 2. 安装前端依赖
@@ -40,6 +40,8 @@ npm install
 ### 3. 启动后端
 
 ```powershell
+$env:PGSTR="Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=admin;"
+$env:DEEPSEEK_API_KEY="你的 DeepSeek API Key"
 dotnet run --project src\NetMind.WebApi\NetMind.WebApi.csproj
 ```
 
