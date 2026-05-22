@@ -1,5 +1,5 @@
 <script setup>
-import { Delete, Plus } from '@element-plus/icons-vue';
+import { Delete, Plus, Refresh } from '@element-plus/icons-vue';
 
 defineProps({
   maps: { type: Array, default: () => [] },
@@ -8,14 +8,26 @@ defineProps({
   deletable: { type: Boolean, default: false }
 });
 
-defineEmits(['select-map', 'create-map', 'delete-map']);
+defineEmits(['select-map', 'create-map', 'delete-map', 'refresh-maps']);
 </script>
 
 <template>
   <aside class="sidebar">
     <div class="section-heading">
       <h2>思维导图</h2>
-      <span>{{ maps.length }} 个</span>
+      <div class="heading-actions">
+        <span>{{ maps.length }} 个</span>
+        <el-button
+          circle
+          size="small"
+          :icon="Refresh"
+          :disabled="loading"
+          aria-label="刷新思维导图列表"
+          title="刷新思维导图列表"
+          data-testid="refresh-map-list"
+          @click="$emit('refresh-maps')"
+        />
+      </div>
     </div>
     <div class="sidebar-actions" v-if="deletable">
       <el-button class="wide-action" type="primary" :icon="Plus" data-testid="open-create-map" @click="$emit('create-map')">新增</el-button>
@@ -36,6 +48,12 @@ defineEmits(['select-map', 'create-map', 'delete-map']);
 </template>
 
 <style scoped>
+.heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .map-list {
   max-height: calc(100vh - 220px);
   overflow-y: auto;

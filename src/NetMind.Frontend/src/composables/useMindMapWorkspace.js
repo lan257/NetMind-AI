@@ -176,6 +176,32 @@ export function useMindMapWorkspace() {
     await selectMap(nextMap.id);
   }
 
+  async function refreshMapList() {
+    const data = await run(() => api('/api/mind-maps'), '思维导图列表已刷新');
+    if (!data) {
+      return;
+    }
+
+    maps.value = data;
+    if (maps.value.length === 0) {
+      selectedMapId.value = null;
+      mapTitle.value = '';
+      nodes.value = [];
+      relations.value = [];
+      selectedNodeId.value = null;
+      resetNodeForm();
+      return;
+    }
+
+    const activeMap = maps.value.find((map) => map.id === selectedMapId.value);
+    if (activeMap) {
+      mapTitle.value = activeMap.title;
+      return;
+    }
+
+    await selectMap(maps.value[0].id);
+  }
+
   async function loadAiModels() {
     // 从全局模型管理器中同步模型列表和选中项
     const data = await run(() => api('/api/ai/models'));
@@ -202,6 +228,18 @@ export function useMindMapWorkspace() {
     const map = maps.value.find((item) => item.id === id);
     mapTitle.value = map?.title ?? '';
     await refreshMapData(id, { keepNodeId: null, message: '导图已加载' });
+  }
+
+  async function refreshSelectedMapData(message = '导图内容已刷新') {
+    if (!selectedMap.value) {
+      showToast('error', '请先选择思维导图');
+      return;
+    }
+
+    await refreshMapData(selectedMap.value.id, {
+      keepNodeId: selectedNodeId.value,
+      message
+    });
   }
 
   async function createMap() {
@@ -755,8 +793,10 @@ export function useMindMapWorkspace() {
     toast,
     visualNodes,
     loadMaps,
+    refreshMapList,
     loadAiModels,
     selectMap,
+    refreshSelectedMapData,
     createMap,
     selectNode,
     createNode,

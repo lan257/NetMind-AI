@@ -15,7 +15,7 @@ const props = defineProps({
   hideCanvasEditor: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node', 'save-node-positions']);
+const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node', 'save-node-positions', 'refresh-map']);
 
 const canvasRef = ref(null);
 const wrapRef = ref(null);
@@ -574,6 +574,7 @@ function resetView() {
   manualPositions.value = new Map();
   unsavedPositionIds.value = new Set();
   fitView();
+  emit('refresh-map');
 }
 
 function createRootNode() {
@@ -680,7 +681,7 @@ onBeforeUnmount(() => {
       <div class="canvas-tool-group">
         <el-button :icon="ZoomOut" @click="zoomAt(0.9)">缩小</el-button>
         <el-button :icon="ZoomIn" @click="zoomAt(1.1)">放大</el-button>
-        <el-button :icon="Refresh" @click="resetView">重置</el-button>
+        <el-button :icon="Refresh" :disabled="loading || !map" data-testid="reset-canvas" @click="resetView">重置</el-button>
       </div>
       <div v-if="editable" class="canvas-tool-group canvas-primary-tools">
         <el-button type="primary" :icon="Plus" :disabled="loading || !map" @click="createRootNode">根节点</el-button>

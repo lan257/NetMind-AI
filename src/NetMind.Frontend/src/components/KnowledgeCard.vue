@@ -1,6 +1,6 @@
 <script setup>
 import { ref, nextTick, watch } from 'vue';
-import { FullScreen, Location, Link, ArrowLeft } from '@element-plus/icons-vue';
+import { FullScreen, Location, Link, ArrowLeft, Refresh } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 import { api } from '../services/api';
 import NodeAiChatPanel from './NodeAiChatPanel.vue';
@@ -62,6 +62,10 @@ async function loadNodeData(node) {
   } finally {
     cardLoading.value = false;
   }
+}
+
+async function refreshCard() {
+  await loadNodeData(currentNode.value);
 }
 
 function navigateTo(node) {
@@ -156,7 +160,18 @@ function jumpToMap() {
           <el-button v-if="navHistory.length > 0" :icon="ArrowLeft" size="small" text @click="goBack" />
           <h2>{{ currentNode?.title ?? '节点内容' }}</h2>
         </div>
-        <el-tag v-if="currentNode?.isExternal || (currentNode?.mapId && String(currentNode.mapId) !== String(props.currentMapId))" type="info" size="small" effect="plain">跨图</el-tag>
+        <div class="card-heading-actions">
+          <el-tag v-if="currentNode?.isExternal || (currentNode?.mapId && String(currentNode.mapId) !== String(props.currentMapId))" type="info" size="small" effect="plain">跨图</el-tag>
+          <el-button
+            size="small"
+            :icon="Refresh"
+            :disabled="!currentNode || cardLoading"
+            data-testid="refresh-knowledge-card"
+            @click="refreshCard"
+          >
+            刷新
+          </el-button>
+        </div>
       </div>
       <div v-if="!currentNode" class="empty small">选择一个节点查看详情。</div>
       <template v-else>
@@ -248,6 +263,7 @@ function jumpToMap() {
 .section-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0; }
 .section-heading h2 { margin:0; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .section-heading span { font-size:12px; color:var(--el-text-color-secondary); white-space:nowrap; }
+.card-heading-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .card-content, .card-editor { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
 .card-content .markdown-body { color:#263747; line-height:1.6; font-size:13px; }
 .card-editor label { display:flex; flex-direction:column; gap:3px; font-size:13px; font-weight:500; }

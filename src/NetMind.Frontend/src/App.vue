@@ -73,6 +73,7 @@ onMounted(async () => {
           @select-map="workspace.selectMap"
           @create-map="openCreatePage"
           @delete-map="workspace.deleteSelectedMap"
+          @refresh-maps="workspace.refreshMapList"
         />
         <MindMapCanvas
           v-if="viewMode === 'graph'"
@@ -91,6 +92,7 @@ onMounted(async () => {
           @update-node="workspace.updateCanvasNode"
           @save-node-positions="workspace.saveCanvasNodePositions"
           @delete-node="workspace.deleteNode(true)"
+          @refresh-map="workspace.refreshSelectedMapData('画布已重置')"
         />
         <NodeTreeView
           v-else
@@ -106,6 +108,7 @@ onMounted(async () => {
           @create-root="workspace.createNode(null)"
           @create-child="workspace.createNode(workspace.selectedNode.value?.id ?? null)"
           @delete-node="workspace.deleteNode(true)"
+          @refresh-nodes="workspace.refreshSelectedMapData('节点列表已刷新')"
         />
         <KnowledgeCard
           :node="previewNode"

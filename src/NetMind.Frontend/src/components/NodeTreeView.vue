@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { ArrowDown, ArrowRight, Plus, Delete } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowRight, Plus, Delete, Refresh } from '@element-plus/icons-vue';
 
 const props = defineProps({
   nodes: { type: Array, default: () => [] },
@@ -12,7 +12,7 @@ const props = defineProps({
   selectedNode: { type: Object, default: null }
 });
 
-const emit = defineEmits(['select-node', 'preview-node', 'create-root', 'create-child', 'delete-node']);
+const emit = defineEmits(['select-node', 'preview-node', 'create-root', 'create-child', 'delete-node', 'refresh-nodes']);
 const collapsedIds = ref(new Set());
 
 const nodeRows = computed(() => {
@@ -72,7 +72,18 @@ function openNode(node) {
   <section class="canvas-panel">
     <div class="section-heading">
       <h2>{{ map?.title ?? '未选择导图' }}</h2>
-      <span>{{ nodes.length }} 个节点</span>
+      <div class="heading-actions">
+        <span>{{ nodes.length }} 个节点</span>
+        <el-button
+          size="small"
+          :icon="Refresh"
+          :disabled="loading || !map"
+          data-testid="refresh-node-list"
+          @click="$emit('refresh-nodes')"
+        >
+          刷新
+        </el-button>
+      </div>
     </div>
     <div v-if="editable" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px;">
       <el-button size="small" type="primary" :icon="Plus" :disabled="loading || !map" @click="$emit('create-root')">根节点</el-button>
@@ -109,6 +120,12 @@ function openNode(node) {
 </template>
 
 <style scoped>
+.heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .node-list {
   max-height: calc(100vh - 260px);
   overflow-y: auto;
