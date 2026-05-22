@@ -53,6 +53,10 @@ function getCallId(call) {
   return call?.call_id || call?.callId || '';
 }
 
+function getToolId(call) {
+  return call?.tool_id || call?.toolId || call?.skill_id || call?.skillId || '';
+}
+
 function getToolName(call) {
   return call?.tool_name ||
     call?.toolName ||
@@ -86,6 +90,19 @@ function buildAgentProgressText(result) {
   return 'Agent 正在推进任务。';
 }
 
+function getWaitingToolCalls(toolCalls) {
+  return (toolCalls || []).filter((call) => {
+    return getCallId(call) && getToolStatus(call) === 'waiting_permission';
+  });
+}
+
+function buildToolContinuationText(decisions) {
+  const hasDeniedTool = decisions.some((decision) => decision.approved === false);
+  return hasDeniedTool
+    ? '用户已处理上一轮 Agent 工具权限，其中存在拒绝项。请根据权限结果继续完成任务。'
+    : '用户已处理上一轮 Agent 工具权限，请继续完成任务。';
+}
+
 export function useNodeAiChat(initialMode = 'node-agent') {
   const messages = ref([]);
   const inputText = ref('');
@@ -95,6 +112,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
   const compressedContext = ref('');
   const agentContext = ref(null);
   const historyToolCalls = ref([]);
+  const pendingToolDecisions = ref([]);
   const lastResult = ref(null);
 
   const maxContextLength = ref(loadMaxContextLength());
@@ -174,6 +192,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     if (isAgentMode(chatMode.value)) {
       agentContext.value = result.contextUpdate || null;
       historyToolCalls.value = toolCalls;
+      pendingToolDecisions.value = [];
     }
 
     lastResult.value = result;
@@ -213,6 +232,16 @@ export function useNodeAiChat(initialMode = 'node-agent') {
         }
       };
     });
+  }
+
+  function saveToolDecision(decision) {
+    const nextDecisions = pendingToolDecisions.value.filter((item) => item.call_id !== decision.call_id);
+    pendingToolDecisions.value = [...nextDecisions, decision];
+  }
+
+  function hasUndecidedWaitingToolCalls() {
+    const decidedCallIds = new Set(pendingToolDecisions.value.map((decision) => decision.call_id));
+    return getWaitingToolCalls(historyToolCalls.value).some((call) => !decidedCallIds.has(getCallId(call)));
   }
 
   function buildAgentRequestBody({ node, mapId, message, modelConfig, confirmedToolCalls = [] }) {
@@ -312,9 +341,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     if (requiresMap(chatMode.value) && !mapId) return;
     if (getToolStatus(call) !== 'waiting_permission') return;
 
-    loading.value = true;
     markToolCallDecision(call, approved, rejectReason);
-    refreshMaxContextLength();
 
     const toolName = getToolName(call);
     const reasonText = rejectReason?.trim();
@@ -325,28 +352,32 @@ export function useNodeAiChat(initialMode = 'node-agent') {
         : `已拒绝执行：${toolName}${reasonText ? `\n原因：${reasonText}` : ''}`
     });
 
-    const modelConfig = getGlobalModelConfig();
     const confirmedToolCall = {
       call_id: getCallId(call),
+      ...(getToolId(call) ? { tool_id: getToolId(call) } : {}),
       approved
     };
     if (!approved && reasonText) {
       confirmedToolCall.reject_reason = reasonText;
     }
+    saveToolDecision(confirmedToolCall);
 
+    if (hasUndecidedWaitingToolCalls()) {
+      return;
+    }
+
+    loading.value = true;
+    refreshMaxContextLength();
+    const modelConfig = getGlobalModelConfig();
     try {
       const result = await api(getAgentEndpoint(chatMode.value), {
         method: 'POST',
         body: JSON.stringify(buildAgentRequestBody({
           node,
           mapId,
-          message: approved
-            ? '用户已允许执行上一轮 Agent 工具，请继续完成任务。'
-            : reasonText
-              ? `用户拒绝执行上一轮 Agent 工具，拒绝原因：${reasonText}。请在不执行该工具的前提下继续回复。`
-              : '用户拒绝执行上一轮 Agent 工具，请在不执行该工具的前提下继续回复。',
+          message: buildToolContinuationText(pendingToolDecisions.value),
           modelConfig,
-          confirmedToolCalls: [confirmedToolCall]
+          confirmedToolCalls: pendingToolDecisions.value
         }))
       });
 
@@ -368,6 +399,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     compressedContext.value = '';
     agentContext.value = null;
     historyToolCalls.value = [];
+    pendingToolDecisions.value = [];
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
@@ -438,6 +470,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     compressedContext.value = '';
     agentContext.value = null;
     historyToolCalls.value = [];
+    pendingToolDecisions.value = [];
     contextUsagePercent.value = 0;
     contextStatus.value = 'comfortable';
     lastResult.value = null;
