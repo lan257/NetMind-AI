@@ -1,0 +1,20 @@
+{
+  "tool_id": "mind_map_create",
+  "tool_name": "创建导图",
+  "description": "创建新的思维导图",
+  "trigger": "当需要新建一个思维导图时使用",
+  "params": {
+    "title": "string"
+  },
+  "param_descriptions": {
+    "title": "导图标题"
+  },
+  "permission_level": "none",
+  "permission_message": "是否允许创建导图？标题：{title}",
+  "script_path": ".tool/tools/mind_map_create/run.py",
+  "category": "netmind",
+  "tags": [
+    "mindmap",
+    "create"
+  ]
+}

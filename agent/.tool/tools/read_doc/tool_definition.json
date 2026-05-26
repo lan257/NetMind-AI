@@ -1,0 +1,15 @@
+{
+  "tool_id": "read_doc",
+  "tool_name": "文件读取",
+  "description": "读取指定文件内容",
+  "trigger": "当需要读取文件内容时使用",
+  "params": {
+    "filepath": "string"
+  },
+  "param_descriptions": {},
+  "permission_level": "none",
+  "permission_message": "是否允许读取 {filepath}",
+  "script_path": ".tool/tools/read_doc/run.py",
+  "category": "文件操作",
+  "tags": []
+}

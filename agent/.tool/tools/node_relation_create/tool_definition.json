@@ -1,0 +1,30 @@
+{
+  "tool_id": "node_relation_create",
+  "tool_name": "创建关系",
+  "description": "创建节点之间的关联",
+  "trigger": "当需要创建两个节点之间的关联关系时使用",
+  "params": {
+    "sourceId": "number",
+    "targetId": "number",
+    "relationType": "string",
+    "weight": "number",
+    "mapId": "number"
+  },
+  "param_descriptions": {
+    "sourceId": "起始节点 ID",
+    "targetId": "目标节点 ID",
+    "relationType": "关系类型",
+    "weight": "权重",
+    "mapId": "所属导图 ID"
+  },
+  "permission_level": "confirm",
+  "permission_message": "是否允许创建关系 (sourceId: {sourceId}, targetId: {targetId})",
+  "script_path": ".tool/tools/node_relation_create/run.py",
+  "category": "netmind",
+  "tags": [
+    "node",
+    "relation",
+    "create",
+    "mindmap"
+  ]
+}

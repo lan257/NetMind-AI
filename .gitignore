@@ -19,8 +19,8 @@ __pycache__/
 **/Logs/
 *.log
 src/NetMind.WebApi/Properties/launchSettings.json
-publish/netmind/
-publish/NetMind.Frontend/
+publish/
+publish/
 *.exe
 artifacts/
 releases/

@@ -1,0 +1,18 @@
+{
+  "tool_id": "modify_file",
+  "tool_name": "修改文件内容",
+  "description": "⚠️ 备用方案：仅当 line_modifier 多次失败后才使用此 Skill。正常情况下请优先使用 line_modifier（精准文件行数修改）。此 Skill 用于修改已存在的文件内容（替换、追加或覆盖）。参数说明：operation 可选值为 replace（替换old_string为content）、append（在文件末尾追加content）、overwrite（用content覆盖整个文件）。当operation为replace时，必须同时提供old_string和content；当operation为append或overwrite时，只需提供content。",
+  "trigger": "⚠️ 仅作为兜底使用！当 line_modifier 连续失败3次以上，或者遇到 line_modifier 无法处理的特殊情况时，才考虑使用此 Skill。日常文件修改请优先使用 line_modifier。",
+  "params": {
+    "filepath": "string",
+    "operation": "string",
+    "content": "string",
+    "old_string": "string"
+  },
+  "param_descriptions": {},
+  "permission_level": "high",
+  "permission_message": "是否允许修改文件 {filepath}",
+  "script_path": ".tool/tools/modify_file/run.py",
+  "category": "文件操作",
+  "tags": []
+}
