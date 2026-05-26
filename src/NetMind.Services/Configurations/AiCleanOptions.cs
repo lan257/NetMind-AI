@@ -25,8 +25,6 @@ public sealed class AiModelOptions
 
     public string? ApiKey { get; init; }
 
-    public string? ApiKeyEnvironmentVariable { get; init; }
-
     public int TimeoutSeconds { get; init; } = 60;
 
     public string Notes { get; init; } = string.Empty;

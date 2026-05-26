@@ -17,6 +17,9 @@ RUN dotnet publish NetMind.WebApi/NetMind.WebApi.csproj \
 # ── Stage 3: Runtime Image ────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /publish
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /publish ./
 
 # Place frontend dist where Program.cs expects it:
@@ -25,6 +28,8 @@ COPY --from=backend-build /publish ./
 #   → /NetMind.Frontend/dist
 RUN mkdir -p /NetMind.Frontend/dist
 COPY --from=frontend-build /app/dist/ /NetMind.Frontend/dist/
+COPY publish/agent/ /agent/
+RUN test -f /agent/src/agent_kernel.py
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 5120

@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
-import { Setting, Plus, Delete, Check } from '@element-plus/icons-vue';
+import { ref, watch } from 'vue';
+import { Plus, Delete, Check } from '@element-plus/icons-vue';
 import { api } from '../services/api';
 
 const props = defineProps({
@@ -14,7 +14,7 @@ const STORAGE_KEY_MODELS = 'netmind_custom_models';
 const STORAGE_KEY_CONTEXT = 'netmind_context_length';
 const STORAGE_KEY_SELECTED_MODEL = 'netmind_selected_model_id';
 const STORAGE_KEY_AGENTBUILD_PATH = 'netmind_agentbuild_path';
-const DEFAULT_AGENTBUILD_PATH = 'G:\\AAW+\\NetMind\\AgentBuild';
+const DEFAULT_AGENTBUILD_PATH = '../agent';
 
 // ---------- 后端模型列表 ----------
 const backendModels = ref([]);
@@ -23,7 +23,7 @@ const backendModels = ref([]);
 const customModels = ref([]);
 const editingModel = ref(null);
 const showModelForm = ref(false);
-const modelForm = ref({ name: '', endpoint: '', apiKey: '' });
+const modelForm = ref({ name: '', endpoint: '', model: '', apiKey: '' });
 
 // ---------- 全局默认模型 ----------
 const selectedModelId = ref('');
@@ -43,8 +43,6 @@ function getSelectedModel() {
 
 function selectModel(id) {
   selectedModelId.value = id;
-  localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, id);
-  emit('model-changed');
 }
 
 async function loadBackendModels() {
@@ -59,7 +57,11 @@ async function loadBackendModels() {
 function loadCustomModels() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_MODELS);
-    customModels.value = raw ? JSON.parse(raw) : [];
+    const models = raw ? JSON.parse(raw) : [];
+    customModels.value = models.map((model) => ({
+      ...model,
+      model: model.model || 'deepseek-chat'
+    }));
   } catch {
     customModels.value = [];
   }
@@ -77,34 +79,32 @@ function loadSelection() {
     // 默认选第一个可用模型
     const first = allModels().find(m => m.status === 'enabled' || m.enabled);
     selectedModelId.value = first?.id ?? '';
-    if (selectedModelId.value) {
-      localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId.value);
-    }
   }
 }
 
 // ---------- 自定义模型 CRUD ----------
 function addModel() {
-  modelForm.value = { name: '', endpoint: '', apiKey: '' };
+  modelForm.value = { name: '', endpoint: '', model: '', apiKey: '' };
   editingModel.value = null;
   showModelForm.value = true;
 }
 
 function editModel(index) {
   const m = customModels.value[index];
-  modelForm.value = { name: m.name, endpoint: m.endpoint, apiKey: m.apiKey };
+  modelForm.value = { name: m.name, endpoint: m.endpoint, model: m.model || '', apiKey: m.apiKey };
   editingModel.value = index;
   showModelForm.value = true;
 }
 
 function saveModel() {
-  if (!modelForm.value.name.trim() || !modelForm.value.endpoint.trim()) {
+  if (!modelForm.value.name.trim() || !modelForm.value.endpoint.trim() || !modelForm.value.model.trim()) {
     return;
   }
   const entry = {
     id: 'custom-' + Date.now(),
     name: modelForm.value.name.trim(),
     endpoint: modelForm.value.endpoint.trim(),
+    model: modelForm.value.model.trim(),
     apiKey: modelForm.value.apiKey,
     provider: 'deepseek',
     isDefault: false,
@@ -118,7 +118,6 @@ function saveModel() {
   } else {
     customModels.value.push(entry);
   }
-  saveCustomModels();
   showModelForm.value = false;
 
   // 如果是第一个模型，自动选中
@@ -130,7 +129,6 @@ function saveModel() {
 function deleteModel(index) {
   const deleted = customModels.value[index];
   customModels.value.splice(index, 1);
-  saveCustomModels();
 
   // 如果删除的是当前选中模型，切换到第一个
   if (selectedModelId.value === deleted.id) {
@@ -157,7 +155,6 @@ function getBackendKeyOverride(modelId) {
 
 function setBackendKeyOverride(modelId, key) {
   backendKeyOverrides.value[modelId] = key;
-  localStorage.setItem('netmind_backend_model_keys', JSON.stringify(backendKeyOverrides.value));
 }
 
 // ---------- 上下文长度 ----------
@@ -174,7 +171,6 @@ function loadContextLength() {
 
 function saveContextLength(val) {
   contextLength.value = val;
-  localStorage.setItem(STORAGE_KEY_CONTEXT, String(val));
 }
 
 function formatContextLength(val) {
@@ -196,7 +192,35 @@ function loadAgentBuildPath() {
 
 function saveAgentBuildPath(val) {
   agentBuildPath.value = val;
-  localStorage.setItem(STORAGE_KEY_AGENTBUILD_PATH, val);
+}
+
+function saveSettings() {
+  saveCustomModels();
+  localStorage.setItem('netmind_backend_model_keys', JSON.stringify(backendKeyOverrides.value));
+  localStorage.setItem(STORAGE_KEY_CONTEXT, String(contextLength.value));
+  localStorage.setItem(STORAGE_KEY_AGENTBUILD_PATH, agentBuildPath.value);
+
+  if (selectedModelId.value) {
+    localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId.value);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL);
+  }
+
+  emit('model-changed');
+  emit('update:modelValue', false);
+}
+
+function cancelSettings() {
+  showModelForm.value = false;
+  emit('update:modelValue', false);
+}
+
+function handleDialogVisibilityChange(value) {
+  if (!value) {
+    cancelSettings();
+  } else {
+    emit('update:modelValue', true);
+  }
 }
 
 // ---------- 生命周期 ----------
@@ -219,7 +243,7 @@ watch(() => props.modelValue, async (val) => {
     width="min(620px, calc(100vw - 32px))"
     class="settings-dialog"
     :close-on-click-modal="false"
-    @update:model-value="$emit('update:modelValue', $event)"
+    @update:model-value="handleDialogVisibilityChange"
   >
     <div class="settings-body">
       <!-- ===== 全局默认模型 ===== -->
@@ -251,6 +275,7 @@ watch(() => props.modelValue, async (val) => {
               <span class="model-select-name">{{ model.name }}</span>
               <span class="model-select-detail">
                 {{ model.provider || model.Provider }} · {{ model.endpoint || model.Endpoint }}
+                <template v-if="model.model || model.Model"> · {{ model.model || model.Model }}</template>
               </span>
             </div>
             <el-tag v-if="model.id && model.id.startsWith('custom-')" size="small" type="warning">自定义</el-tag>
@@ -265,7 +290,7 @@ watch(() => props.modelValue, async (val) => {
           <h3>内置模型 API Key</h3>
         </div>
         <p class="helper-text">
-          为内置模型覆盖 API Key（替代环境变量）。留空则使用服务器配置的环境变量。
+          为内置模型填写 API Key。API Key 只保存在设置页，调用 AI 时会先加密再提交给后端。
         </p>
         <div v-for="model in backendModels" :key="model.id" class="backend-key-row">
           <span class="backend-key-label">{{ model.name }}</span>
@@ -274,7 +299,7 @@ watch(() => props.modelValue, async (val) => {
             type="password"
             show-password
             size="small"
-            placeholder="留空使用环境变量"
+            placeholder="请输入 API Key"
             style="flex: 1;"
             @update:model-value="setBackendKeyOverride(model.id, $event)"
           />
@@ -288,7 +313,7 @@ watch(() => props.modelValue, async (val) => {
           <el-button :icon="Plus" size="small" @click="addModel">新增模型</el-button>
         </div>
         <p class="helper-text">
-          配置自定义 AI 模型的名称、地址和 API Key。API Key 和模型配置仅保存在浏览器本地，不会上传至服务器或提交到仓库。
+          配置自定义 AI 模型的名称、模型、地址和 API Key。API Key 保存在浏览器本地，调用 AI 时会先加密再提交给后端。
         </p>
 
         <div v-if="customModels.length === 0" class="empty small">暂无自定义模型。</div>
@@ -296,6 +321,7 @@ watch(() => props.modelValue, async (val) => {
           <div v-for="(model, index) in customModels" :key="model.id" class="model-item">
             <div class="model-info">
               <span class="model-name">{{ model.name }}</span>
+              <span class="model-model">{{ model.model }}</span>
               <span class="model-endpoint">{{ model.endpoint }}</span>
               <span class="model-key-hint">{{ model.apiKey ? '已配置 Key' : '未配置 Key' }}</span>
             </div>
@@ -324,10 +350,14 @@ watch(() => props.modelValue, async (val) => {
             <el-input v-model="modelForm.endpoint" placeholder="例如：https://api.deepseek.com/chat/completions" />
           </label>
           <label>
+            模型标识（model）
+            <el-input v-model="modelForm.model" placeholder="例如：deepseek-v4-flash" />
+          </label>
+          <label>
             API Key
             <el-input v-model="modelForm.apiKey" type="password" show-password placeholder="输入你的 API Key" />
           </label>
-          <p class="helper-text">API Key 仅保存在浏览器本地 localStorage，不会提交到 Git 仓库或上传到服务器。</p>
+          <p class="helper-text">API Key 仅保存在浏览器本地 localStorage；调用 AI 时会先加密，再由后端解密后转发给模型服务。</p>
         </div>
         <template #footer>
           <el-button @click="showModelForm = false">取消</el-button>
@@ -345,7 +375,7 @@ watch(() => props.modelValue, async (val) => {
         </p>
         <el-input
           :model-value="agentBuildPath"
-          placeholder="例如：G:\AAW+\NetMind\AgentBuild"
+          placeholder="例如：C:\Program Files\NetMind\agent"
           @update:model-value="saveAgentBuildPath"
         />
       </section>
@@ -390,6 +420,10 @@ watch(() => props.modelValue, async (val) => {
         </div>
       </section>
     </div>
+    <template #footer>
+      <el-button @click="cancelSettings">取消</el-button>
+      <el-button type="primary" @click="saveSettings">保存</el-button>
+    </template>
   </el-dialog>
 </template>
 
@@ -398,6 +432,26 @@ watch(() => props.modelValue, async (val) => {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: min(620px, calc(100vh - 180px));
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+:global(.settings-dialog) {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+}
+
+:global(.settings-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:global(.settings-dialog .el-dialog__footer) {
+  flex-shrink: 0;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .settings-section {
@@ -531,6 +585,15 @@ watch(() => props.modelValue, async (val) => {
 .model-name {
   font-weight: 600;
   font-size: 14px;
+}
+
+.model-model {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(280px, 40vw);
 }
 
 .model-endpoint {

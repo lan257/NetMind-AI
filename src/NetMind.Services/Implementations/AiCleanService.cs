@@ -67,6 +67,7 @@ public sealed class AiCleanService : IAiCleanService
                 Name = model.Name,
                 Provider = model.Provider,
                 Endpoint = model.Endpoint,
+                Model = model.Model,
                 IsDefault = model.IsDefault,
                 Status = model.Enabled ? "enabled" : "disabled",
                 Notes = model.Notes
@@ -82,7 +83,7 @@ public sealed class AiCleanService : IAiCleanService
         }
 
         var prompt = BuildUserPrompt(request.NaturalLanguage);
-        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey, request.Model);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -119,7 +120,7 @@ public sealed class AiCleanService : IAiCleanService
             throw new ArgumentException("请输入对话内容。", nameof(request));
         }
 
-        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey, request.Model);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -158,7 +159,7 @@ public sealed class AiCleanService : IAiCleanService
             throw new ArgumentException("请输入需求内容。", nameof(request));
         }
 
-        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey, request.Model);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -248,7 +249,7 @@ public sealed class AiCleanService : IAiCleanService
             prompt = BuildNodeChatPrompt(nodeContext, contextText, request.Message, false, 0, maxReplyLength);
         }
 
-        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey, request.Model);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -324,7 +325,7 @@ public sealed class AiCleanService : IAiCleanService
             prompt = BuildAppHelpPrompt(contextText, request.Message, false, 0, maxReplyLength);
         }
 
-        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey, request.Model);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -404,7 +405,7 @@ public sealed class AiCleanService : IAiCleanService
             prompt = BuildMapChatPrompt(mapContext, contextText, request.Message);
         }
 
-        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey);
+        var candidates = SelectModels(request.ModelId, request.Endpoint, request.Provider, request.ApiKey, request.Model);
         Exception? lastError = null;
         foreach (var candidate in candidates)
         {
@@ -636,7 +637,7 @@ public sealed class AiCleanService : IAiCleanService
         return (reply, compressedContext);
     }
 
-    private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId, string? endpoint = null, string? provider = null, string? apiKey = null)
+    private IReadOnlyList<AiModelOptions> SelectModels(string? requestedModelId, string? endpoint = null, string? provider = null, string? apiKey = null, string? modelName = null)
     {
         // 前端自定义模型（从设置中配置的模型，通过请求体直传 endpoint/provider/apiKey）
         if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(provider))
@@ -649,7 +650,7 @@ public sealed class AiCleanService : IAiCleanService
                     Name = requestedModelId ?? "自定义模型",
                     Provider = provider,
                     Endpoint = endpoint,
-                    Model = provider.Equals("ollama", StringComparison.OrdinalIgnoreCase) ? "custom" : "deepseek-chat",
+                    Model = ResolveCustomModelName(provider, modelName),
                     Enabled = true,
                     IsDefault = false,
                     ApiKey = apiKey,
@@ -665,7 +666,7 @@ public sealed class AiCleanService : IAiCleanService
                 model.Enabled && string.Equals(model.Id, requestedModelId, StringComparison.Ordinal));
             if (requested is not null)
             {
-                // 如果前端传了 apiKey，用它覆盖环境变量 Key
+                // 后端模型参数来自配置文件，API Key 只接受设置页加密传入的请求值。
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
                     requested = new AiModelOptions
@@ -712,8 +713,7 @@ public sealed class AiCleanService : IAiCleanService
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException(
-                $"AI 模型 '{model.Name}' 缺少 API Key。请在「设置 → AI 大模型配置」中为模型配置 API Key，" +
-                $"或设置环境变量 {(string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable) ? "" : model.ApiKeyEnvironmentVariable)}。");
+                $"AI 模型 '{model.Name}' 缺少 API Key。请在「设置 → AI 大模型配置」中为模型配置 API Key。");
         }
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
@@ -995,14 +995,7 @@ public sealed class AiCleanService : IAiCleanService
 
     private static string? ResolveApiKey(AiModelOptions model)
     {
-        if (!string.IsNullOrWhiteSpace(model.ApiKey))
-        {
-            return model.ApiKey;
-        }
-
-        return string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable)
-            ? null
-            : Environment.GetEnvironmentVariable(model.ApiKeyEnvironmentVariable);
+        return null;
     }
 
     private static string StripMarkdownFence(string value)
@@ -1030,10 +1023,21 @@ public sealed class AiCleanService : IAiCleanService
             Name = model.Name,
             Provider = model.Provider,
             Endpoint = model.Endpoint,
+            Model = model.Model,
             IsDefault = model.IsDefault,
             Status = model.Enabled ? "enabled" : "disabled",
             Notes = model.Notes
         };
+    }
+
+    private static string ResolveCustomModelName(string provider, string? modelName)
+    {
+        if (!string.IsNullOrWhiteSpace(modelName))
+        {
+            return modelName.Trim();
+        }
+
+        return provider.Equals("ollama", StringComparison.OrdinalIgnoreCase) ? "custom" : "deepseek-chat";
     }
 
     private void LogAiApiCall(AiModelOptions model, System.Net.HttpStatusCode statusCode, long elapsedMs)

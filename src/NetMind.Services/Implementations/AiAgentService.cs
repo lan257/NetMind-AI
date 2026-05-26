@@ -307,8 +307,7 @@ public sealed class AiAgentService : IAiAgentService
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException(
-                $"AI 模型 '{model.Name}' 缺少 API Key。请在「设置 → AI 大模型配置」中为模型配置 API Key，" +
-                $"或设置环境变量 {(string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable) ? "" : model.ApiKeyEnvironmentVariable)}。");
+                $"AI 模型 '{model.Name}' 缺少 API Key。请在「设置 → AI 大模型配置」中为模型配置 API Key。");
         }
 
         return new Dictionary<string, object?>
@@ -348,7 +347,7 @@ public sealed class AiAgentService : IAiAgentService
                 Name = string.IsNullOrWhiteSpace(request.ModelId) ? "自定义 Agent 模型" : request.ModelId,
                 Provider = request.Provider,
                 Endpoint = request.Endpoint,
-                Model = "deepseek-chat",
+                Model = string.IsNullOrWhiteSpace(request.Model) ? "deepseek-chat" : request.Model.Trim(),
                 Enabled = true,
                 IsDefault = false,
                 ApiKey = request.ApiKey,
@@ -376,7 +375,6 @@ public sealed class AiAgentService : IAiAgentService
             Enabled = model.Enabled,
             IsDefault = model.IsDefault,
             ApiKey = apiKey,
-            ApiKeyEnvironmentVariable = model.ApiKeyEnvironmentVariable,
             TimeoutSeconds = model.TimeoutSeconds,
             Notes = model.Notes
         };
@@ -785,14 +783,7 @@ public sealed class AiAgentService : IAiAgentService
 
     private static string? ResolveApiKey(AiModelOptions model)
     {
-        if (!string.IsNullOrWhiteSpace(model.ApiKey))
-        {
-            return model.ApiKey;
-        }
-
-        return string.IsNullOrWhiteSpace(model.ApiKeyEnvironmentVariable)
-            ? null
-            : Environment.GetEnvironmentVariable(model.ApiKeyEnvironmentVariable);
+        return null;
     }
 
     private static string NormalizeBaseUrl(string? baseUrl)
@@ -811,6 +802,7 @@ public sealed class AiAgentService : IAiAgentService
             Name = model.Name,
             Provider = model.Provider,
             Endpoint = model.Endpoint,
+            Model = model.Model,
             IsDefault = model.IsDefault,
             Status = model.Enabled ? "enabled" : "disabled",
             Notes = model.Notes

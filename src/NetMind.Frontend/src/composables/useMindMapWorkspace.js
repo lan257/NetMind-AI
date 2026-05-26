@@ -212,7 +212,10 @@ export function useMindMapWorkspace() {
     // 合并自定义模型
     try {
       const customRaw = localStorage.getItem('netmind_custom_models');
-      const custom = customRaw ? JSON.parse(customRaw) : [];
+      const custom = (customRaw ? JSON.parse(customRaw) : []).map((model) => ({
+        ...model,
+        model: model.model || 'deepseek-chat'
+      }));
       aiModels.value = [...aiModels.value, ...custom];
     } catch { /* 忽略 */ }
 
@@ -363,41 +366,6 @@ export function useMindMapWorkspace() {
       selectedNode.value.positionY = payload.positionY;
     }
     await updateNode();
-  }
-
-  async function saveCanvasNodePositions(positionUpdates = []) {
-    if (!selectedMap.value || positionUpdates.length === 0) {
-      return;
-    }
-
-    const updatesById = new Map(positionUpdates.map((item) => [item.nodeId, item]));
-    const targets = nodes.value.filter((node) => updatesById.has(node.id));
-    if (targets.length === 0) {
-      showToast('error', '没有可保存的位置变更');
-      return;
-    }
-
-    const saved = await run(
-      () => Promise.all(targets.map((node) => {
-        const position = updatesById.get(node.id);
-        return api(`/api/nodes/${node.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            parentId: node.parentId,
-            title: node.title,
-            content: node.content,
-            orderNo: Number(node.orderNo) || 0,
-            positionX: position.positionX,
-            positionY: position.positionY
-          })
-        });
-      })),
-      `已保存 ${targets.length} 个节点位置`
-    );
-
-    if (saved) {
-      await refreshMapData(selectedMap.value.id, { keepNodeId: selectedNodeId.value });
-    }
   }
 
   async function deleteSelectedMap() {
@@ -616,6 +584,7 @@ export function useMindMapWorkspace() {
           modelId: modelConfig.modelId,
           endpoint: modelConfig.endpoint || null,
           provider: modelConfig.provider || null,
+          model: modelConfig.model || null,
           apiKey: modelConfig.apiKey || null
         })
       }),
@@ -660,6 +629,7 @@ export function useMindMapWorkspace() {
           modelId: modelConfig.modelId || null,
           endpoint: modelConfig.endpoint || null,
           provider: modelConfig.provider || null,
+          model: modelConfig.model || null,
           apiKey: modelConfig.apiKey || null
         })
       }),
@@ -747,6 +717,7 @@ export function useMindMapWorkspace() {
           modelId: modelConfig.modelId || null,
           endpoint: modelConfig.endpoint || null,
           provider: modelConfig.provider || null,
+          model: modelConfig.model || null,
           apiKey: modelConfig.apiKey || null
         })
       }),
@@ -803,7 +774,6 @@ export function useMindMapWorkspace() {
     createCanvasNode,
     updateNode,
     updateCanvasNode,
-    saveCanvasNodePositions,
     deleteSelectedMap,
     deleteNode,
     createRelation,

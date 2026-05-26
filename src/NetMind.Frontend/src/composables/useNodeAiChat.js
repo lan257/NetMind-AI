@@ -248,6 +248,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
       modelId: modelConfig.modelId || null,
       endpoint: modelConfig.endpoint || null,
       provider: modelConfig.provider || null,
+      model: modelConfig.model || null,
       apiKey: modelConfig.apiKey || null,
       maxContextLength: maxContextLength.value,
       agentBuildPath: loadAgentBuildPath(),
@@ -308,6 +309,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
           modelId: modelConfig.modelId || null,
           endpoint: modelConfig.endpoint || null,
           provider: modelConfig.provider || null,
+          model: modelConfig.model || null,
           apiKey: modelConfig.apiKey || null,
           maxContextLength: maxContextLength.value
         };

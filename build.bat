@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
+set "ROOT=%~dp0"
 
 echo.
 echo ========================================
@@ -9,7 +10,7 @@ echo ========================================
 echo.
 
 echo [1/3] Building Frontend...
-cd /d "G:\AAW+\NetMind\NetMind-AI\src\NetMind.Frontend"
+cd /d "%ROOT%src\NetMind.Frontend"
 if errorlevel 1 goto error
 
 call npm install
@@ -18,7 +19,7 @@ if errorlevel 1 goto error
 call npm run build
 if errorlevel 1 goto error
 
-cd /d "G:\AAW+\NetMind\NetMind-AI"
+cd /d "%ROOT%"
 if errorlevel 1 goto error
 
 echo.

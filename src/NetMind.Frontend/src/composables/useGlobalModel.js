@@ -2,7 +2,7 @@
  * 全局 AI 模型配置管理
  *
  * 从后端 API + localStorage 合并模型列表，
- * 并提供全局选中的模型配置（endpoint、provider、apiKey）。
+ * 并提供全局选中的模型配置（endpoint、provider、model、apiKey）。
  * 所有 AI 调用统一从此处读取。
  */
 
@@ -40,7 +40,11 @@ function loadBackendKeyOverrides() {
 function loadCustomModels() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_MODELS);
-    customModels.value = raw ? JSON.parse(raw) : [];
+    const models = raw ? JSON.parse(raw) : [];
+    customModels.value = models.map((model) => ({
+      ...model,
+      model: model.model || 'deepseek-chat'
+    }));
   } catch {
     customModels.value = [];
   }
@@ -102,7 +106,7 @@ export function useGlobalModel() {
  * 获取当前全局选中模型的完整 API 调用配置。
  * 用于所有 AI API 请求。
  *
- * @returns {{ modelId: string|null, endpoint: string|null, provider: string|null, apiKey: string|null, name: string|null }}
+ * @returns {{ modelId: string|null, endpoint: string|null, provider: string|null, model: string|null, apiKey: string|null, name: string|null }}
  */
 export function getGlobalModelConfig() {
   loadCustomModels();
@@ -111,12 +115,13 @@ export function getGlobalModelConfig() {
 
   const model = getSelectedModel();
   if (!model) {
-    return { modelId: null, endpoint: null, provider: null, apiKey: null, name: null };
+    return { modelId: null, endpoint: null, provider: null, model: null, apiKey: null, name: null };
   }
 
   const modelId = model.id;
   const provider = model.provider || model.Provider || 'deepseek';
   const endpoint = model.endpoint || model.Endpoint || '';
+  const modelName = model.model || model.Model || '';
 
   // API Key 优先级：自定义模型直接取 apiKey > 后端模型覆盖 Key
   let apiKey = null;
@@ -130,6 +135,7 @@ export function getGlobalModelConfig() {
     modelId,
     endpoint,
     provider,
+    model: modelName,
     apiKey,
     name: model.name || model.Name || ''
   };

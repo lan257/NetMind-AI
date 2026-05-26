@@ -42,7 +42,8 @@ internal static class SwaggerDocumentFactory
                 ["/api/ai/app-help-chat"] = Path("基于应用帮助文档问答", "post"),
                 ["/api/ai-conversation-records"] = Path("查询和创建 AI 对话记录", "get", "post"),
                 ["/api/ai-conversation-records/{id}"] = Path("查询、更新和逻辑删除单条 AI 对话记录", "get", "put", "delete"),
-                ["/api/system/health"] = Path("查询系统健康状态", "get")
+                ["/api/system/health"] = Path("查询系统健康状态", "get"),
+                ["/api/system/crypto/api-key-public-key"] = Path("查询 API Key 加密公钥", "get")
             }
         };
     }

@@ -66,8 +66,7 @@ var aiCleanService = new AiCleanService(
                 Endpoint = "https://api.deepseek.com/chat/completions",
                 Model = "deepseek-chat",
                 Enabled = true,
-                IsDefault = true,
-                ApiKeyEnvironmentVariable = "DEEPSEEK_API_KEY"
+                IsDefault = true
             },
             new AiModelOptions
             {
@@ -112,10 +111,10 @@ var aiAgentService = new AiAgentService(
 AssertKernelV2RequestContract(aiAgentService);
 AssertAppHelpFocusContext(aiAgentService);
 
-var connectionString = Environment.GetEnvironmentVariable("NETMIND_TEST_POSTGRES_CONNECTION");
+var connectionString = args.FirstOrDefault();
 if (string.IsNullOrWhiteSpace(connectionString))
 {
-    Console.WriteLine("NETMIND_TEST_POSTGRES_CONNECTION is not set; database integration tests were skipped.");
+    Console.WriteLine("PostgreSQL connection string argument is not set; database integration tests were skipped.");
     Console.WriteLine("NetMind integration tests passed.");
     return;
 }

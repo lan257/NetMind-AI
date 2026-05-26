@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Check, Delete, EditPen, Plus, Refresh, ZoomIn, ZoomOut, Link } from '@element-plus/icons-vue';
+import { Delete, EditPen, Plus, Refresh, ZoomIn, ZoomOut, Link } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 
 const props = defineProps({
@@ -15,15 +15,13 @@ const props = defineProps({
   hideCanvasEditor: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node', 'save-node-positions', 'refresh-map']);
+const emit = defineEmits(['select-node', 'preview-node', 'create-node', 'update-node', 'delete-node', 'refresh-map']);
 
 const canvasRef = ref(null);
 const wrapRef = ref(null);
 const hoverNodeId = ref(null);
 const hitRegions = ref([]);
 const actionRegions = ref([]);
-const manualPositions = ref(new Map());
-const unsavedPositionIds = ref(new Set());
 const collapsedNodeIds = ref(new Set());
 const viewport = ref({ x: 0, y: 0, scale: 1 });
 const editorForm = ref({ title: '', content: '', orderNo: 1 });
@@ -89,18 +87,9 @@ function onRefDialogOpened() {
   });
 }
 
-function getSavedPosition(node) {
-  if (Number.isFinite(node.positionX) && Number.isFinite(node.positionY)) {
-    return { x: node.positionX, y: node.positionY };
-  }
-
-  return null;
-}
-
 // [[ 触发现在通过 onContentKeyup 在 keyup 事件中处理
 
 const selectedNode = computed(() => props.nodes.find((node) => node.id === props.selectedNodeId) ?? null);
-const unsavedPositionCount = computed(() => unsavedPositionIds.value.size);
 const orderedNodes = computed(() => [...props.nodes].sort((left, right) => {
   return (left.orderNo ?? 0) - (right.orderNo ?? 0) || left.id - right.id;
 }));
@@ -181,12 +170,10 @@ function createLayout(ctx) {
     const lines = wrapText(ctx, node.title, 144);
     const widthValue = Math.max(132, Math.min(196, Math.max(...lines.map((line) => ctx.measureText(line).width)) + 34));
     const heightValue = Math.max(48, lines.length * 18 + 24);
-    const manual = manualPositions.value.get(node.id);
-    const saved = getSavedPosition(node);
     const graphNode = {
       ...node,
-      x: manual?.x ?? saved?.x ?? direction * (rootGap + (depth - 1) * levelGap),
-      y: manual?.y ?? saved?.y ?? y,
+      x: direction * (rootGap + (depth - 1) * levelGap),
+      y,
       width: widthValue,
       height: heightValue,
       lines,
@@ -261,13 +248,6 @@ function toScreen(point, width, height) {
   return {
     x: width / 2 + viewport.value.x + point.x * viewport.value.scale,
     y: height / 2 + viewport.value.y + point.y * viewport.value.scale
-  };
-}
-
-function toWorld(point, width, height) {
-  return {
-    x: (point.x - width / 2 - viewport.value.x) / viewport.value.scale,
-    y: (point.y - height / 2 - viewport.value.y) / viewport.value.scale
   };
 }
 
@@ -485,7 +465,7 @@ function handlePointerDown(event) {
   const action = findAction(event);
   const hit = findHit(event);
   interaction = {
-    type: action ? 'action' : hit && props.editable ? 'node' : 'pan',
+    type: action ? 'action' : hit ? 'node' : 'canvas',
     action,
     node: action?.node ?? hit?.node ?? null,
     startX: point.x,
@@ -502,32 +482,16 @@ function handlePointerMove(event) {
   }
 
   const point = getCanvasPoint(event);
-  const width = Math.max(320, Math.floor(wrapper.clientWidth));
-  const height = Math.max(320, Math.floor(wrapper.clientHeight));
-
   if (interaction) {
     const deltaX = point.x - interaction.startX;
     const deltaY = point.y - interaction.startY;
     interaction.moved = interaction.moved || Math.hypot(deltaX, deltaY) > 4;
-
-    if (interaction.type === 'pan') {
+    if (interaction.type === 'canvas') {
       viewport.value = {
         ...viewport.value,
         x: interaction.startViewport.x + deltaX,
         y: interaction.startViewport.y + deltaY
       };
-      scheduleDraw();
-      return;
-    }
-
-    if (props.editable && interaction.type === 'node' && interaction.node) {
-      const world = toWorld(point, width, height);
-      const next = new Map(manualPositions.value);
-      next.set(interaction.node.id, world);
-      manualPositions.value = next;
-      const nextUnsavedIds = new Set(unsavedPositionIds.value);
-      nextUnsavedIds.add(interaction.node.id);
-      unsavedPositionIds.value = nextUnsavedIds;
       scheduleDraw();
       return;
     }
@@ -602,8 +566,6 @@ function handleWheel(event) {
 }
 
 function resetView() {
-  manualPositions.value = new Map();
-  unsavedPositionIds.value = new Set();
   collapsedNodeIds.value = new Set();
   fitView();
   emit('refresh-map');
@@ -646,63 +608,20 @@ function createChildNode() {
 }
 
 function saveSelectedNode() {
-  const saved = selectedNode.value ? getSavedPosition(selectedNode.value) : null;
   emit('update-node', {
     title: editorForm.value.title,
     content: editorForm.value.content,
-    orderNo: Number(editorForm.value.orderNo) || 0,
-    positionX: saved?.x ?? null,
-    positionY: saved?.y ?? null
+    orderNo: Number(editorForm.value.orderNo) || 0
   });
-}
-
-function saveNodePositions() {
-  const changed = [...unsavedPositionIds.value]
-    .map((id) => {
-      const node = props.nodes.find((item) => item.id === id);
-      const position = manualPositions.value.get(id);
-      return node && position ? { nodeId: id, positionX: position.x, positionY: position.y } : null;
-    })
-    .filter(Boolean);
-
-  if (changed.length === 0) {
-    return;
-  }
-
-  emit('save-node-positions', changed);
-}
-
-function clearSavedPositionFlags() {
-  if (unsavedPositionIds.value.size === 0) {
-    return;
-  }
-
-  const remaining = new Set(unsavedPositionIds.value);
-  props.nodes.forEach((node) => {
-    const manual = manualPositions.value.get(node.id);
-    if (
-      manual &&
-      Number.isFinite(node.positionX) &&
-      Number.isFinite(node.positionY) &&
-      Math.abs(node.positionX - manual.x) < 0.01 &&
-      Math.abs(node.positionY - manual.y) < 0.01
-    ) {
-      remaining.delete(node.id);
-    }
-  });
-  unsavedPositionIds.value = remaining;
 }
 
 watch(() => [props.map?.id, props.nodes.length], async () => {
-  manualPositions.value = new Map();
-  unsavedPositionIds.value = new Set();
   await nextTick();
   fitView();
 });
 
 watch(() => [props.nodes, props.relations, props.selectedNodeId], () => {
   pruneCollapsedNodes();
-  clearSavedPositionFlags();
   scheduleDraw();
 }, { deep: true });
 
@@ -746,9 +665,6 @@ onBeforeUnmount(() => {
       <div v-if="editable" class="canvas-tool-group canvas-primary-tools">
         <el-button type="primary" :icon="Plus" :disabled="loading || !map" @click="createRootNode">根节点</el-button>
         <el-button :icon="Plus" :disabled="loading || !map" @click="createChildNode">子节点</el-button>
-        <el-button :icon="Check" :disabled="loading || unsavedPositionCount === 0" data-testid="save-node-positions" @click="saveNodePositions">
-          保存位置 {{ unsavedPositionCount > 0 ? `(${unsavedPositionCount})` : '' }}
-        </el-button>
         <el-button type="danger" :icon="Delete" :disabled="loading || !selectedNode" @click="$emit('delete-node')">删除</el-button>
       </div>
     </div>
@@ -769,7 +685,7 @@ onBeforeUnmount(() => {
           <el-icon><EditPen /></el-icon>
           <div>
             <h2>节点属性</h2>
-            <p>{{ selectedNode ? '修改后点击保存，拖动节点可临时整理当前画布。' : '点击画布中的节点后编辑内容。' }}</p>
+            <p>{{ selectedNode ? '修改后点击保存节点。' : '点击画布中的节点后编辑内容。' }}</p>
           </div>
           <span>{{ selectedNode ? `#${selectedNode.id}` : '未选择' }}</span>
         </div>

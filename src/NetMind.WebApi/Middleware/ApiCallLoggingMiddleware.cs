@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json.Nodes;
 using NetMind.Common.Logging;
 
 namespace NetMind.WebApi.Middleware;
@@ -82,7 +83,7 @@ public sealed class ApiCallLoggingMiddleware
         using var reader = new StreamReader(request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
         var body = await reader.ReadToEndAsync();
         request.Body.Position = 0;
-        return Truncate(body);
+        return Truncate(RedactSensitiveJson(body));
     }
 
     private static async Task<string> ReadResponseBodyAsync(MemoryStream responseBuffer, string? contentType)
@@ -119,5 +120,50 @@ public sealed class ApiCallLoggingMiddleware
         }
 
         return value[..MaxLoggedBodyLength] + $"...[已截断，原长度 {value.Length}]";
+    }
+
+    private static string RedactSensitiveJson(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !value.Contains("apiKey", StringComparison.OrdinalIgnoreCase))
+        {
+            return value;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(value);
+            RedactSensitiveJsonNode(node);
+            return node?.ToJsonString() ?? value;
+        }
+        catch
+        {
+            return value;
+        }
+    }
+
+    private static void RedactSensitiveJsonNode(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var property in obj.ToList())
+                {
+                    if (property.Key.Equals("apiKey", StringComparison.OrdinalIgnoreCase))
+                    {
+                        obj[property.Key] = "***";
+                    }
+                    else
+                    {
+                        RedactSensitiveJsonNode(property.Value);
+                    }
+                }
+                break;
+            case JsonArray array:
+                foreach (var item in array)
+                {
+                    RedactSensitiveJsonNode(item);
+                }
+                break;
+        }
     }
 }

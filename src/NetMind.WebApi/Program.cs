@@ -8,9 +8,11 @@ using NetMind.Services.Interfaces;
 using NetMind.Common.Logging;
 using NetMind.WebApi.Infrastructure;
 using NetMind.WebApi.Middleware;
+using NetMind.WebApi.Security;
 using NetMind.WebApi.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 var appBaseUrl = builder.Configuration["App:BaseUrl"]
     ?? throw new InvalidOperationException("必须配置 App:BaseUrl。");
 
@@ -22,9 +24,10 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]) &&
 
 builder.Services.AddControllers();
 builder.Services.AddSingleton<IAppLogger, AppLogger>();
+builder.Services.AddSingleton<ApiKeyEncryptionService>();
 builder.Services.AddSingleton<IProjectStatusRepository, ProjectStatusRepository>();
 builder.Services.AddSingleton(_ => new PostgresConnectionFactory(
-    Environment.GetEnvironmentVariable("PGSTR") ?? string.Empty));
+    builder.Configuration.GetConnectionString("Postgres") ?? string.Empty));
 builder.Services.AddScoped<IMindMapRepository, MindMapRepository>();
 builder.Services.AddScoped<INodeRepository, NodeRepository>();
 builder.Services.AddScoped<INodeRelationRepository, NodeRelationRepository>();
@@ -218,8 +221,6 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
             Model = section["Model"] ?? string.Empty,
             Enabled = ReadBool(section["Enabled"]),
             IsDefault = ReadBool(section["IsDefault"]),
-            ApiKey = section["ApiKey"],
-            ApiKeyEnvironmentVariable = section["ApiKeyEnvironmentVariable"],
             TimeoutSeconds = ReadInt(section["TimeoutSeconds"], 60),
             Notes = section["Notes"] ?? string.Empty
         })
@@ -251,10 +252,11 @@ static AiCleanOptions LoadAiCleanOptions(IConfiguration configuration, string co
 static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration, string contentRootPath, string appBaseUrl)
 {
     var section = configuration.GetSection("AiAgent");
+    var configuredAgentPath = section["AgentBuildPath"];
     return new AiAgentOptions
     {
-        AgentBuildPath = section["AgentBuildPath"] ?? @"G:\AAW+\NetMind\AgentBuild",
-        PythonExecutable = section["PythonExecutable"] ?? "py",
+        AgentBuildPath = ResolveAgentBuildPath(contentRootPath, configuredAgentPath),
+        PythonExecutable = ResolvePythonExecutable(section["PythonExecutable"]),
         TimeoutSeconds = ReadInt(section["TimeoutSeconds"], 120),
         Temperature = ReadDouble(section["Temperature"], 0.2),
         MaxTokens = ReadInt(section["MaxTokens"], 4096),
@@ -282,6 +284,44 @@ static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration, string co
             "AppHelpCues",
             contentRootPath)
     };
+}
+
+static string ResolveDefaultAgentBuildPath(string contentRootPath)
+{
+    var baseDirectoryCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "agent"));
+    if (Directory.Exists(baseDirectoryCandidate) || File.Exists(Path.Combine(baseDirectoryCandidate, "src", "agent_kernel.py")))
+    {
+        return baseDirectoryCandidate;
+    }
+
+    var contentRootCandidate = Path.GetFullPath(Path.Combine(contentRootPath, "agent"));
+    return Directory.Exists(contentRootCandidate)
+        ? contentRootCandidate
+        : baseDirectoryCandidate;
+}
+
+static string ResolveAgentBuildPath(string contentRootPath, string? configuredValue)
+{
+    if (string.IsNullOrWhiteSpace(configuredValue))
+    {
+        return ResolveDefaultAgentBuildPath(contentRootPath);
+    }
+
+    var value = configuredValue.Trim();
+    if (Path.IsPathRooted(value))
+    {
+        return value;
+    }
+
+    return Path.GetFullPath(Path.Combine(contentRootPath, value));
+}
+
+static string ResolvePythonExecutable(string? configuredValue)
+{
+    var value = string.IsNullOrWhiteSpace(configuredValue) ? "py" : configuredValue.Trim();
+    return !OperatingSystem.IsWindows() && value.Equals("py", StringComparison.OrdinalIgnoreCase)
+        ? "python3"
+        : value;
 }
 
 static AiAgentScenarioOptions ReadAiAgentScenarioOptions(

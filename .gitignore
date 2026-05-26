@@ -14,6 +14,8 @@
 .nuget-cache/
 .npm-cache/
 npm-debug.log*
+__pycache__/
+*.py[cod]
 **/Logs/
 *.log
 src/NetMind.WebApi/Properties/launchSettings.json
@@ -33,3 +35,4 @@ appsettings.*.Local.json
 .deepseek/
 AI文档/.obsidian/
 *.iss
+!build.iss

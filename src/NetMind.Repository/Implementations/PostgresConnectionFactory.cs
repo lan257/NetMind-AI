@@ -10,7 +10,7 @@ public sealed class PostgresConnectionFactory
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            throw new InvalidOperationException("必须配置 PGSTR 环境变量作为数据库连接字符串。");
+            throw new InvalidOperationException("必须在配置文件的 ConnectionStrings:Postgres 中配置 PostgreSQL 连接字符串。");
         }
 
         _connectionString = connectionString;

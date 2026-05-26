@@ -90,7 +90,6 @@ onMounted(async () => {
           @preview-node="preview"
           @create-node="workspace.createCanvasNode"
           @update-node="workspace.updateCanvasNode"
-          @save-node-positions="workspace.saveCanvasNodePositions"
           @delete-node="workspace.deleteNode(true)"
           @refresh-map="workspace.refreshSelectedMapData('画布已重置')"
         />
@@ -141,6 +140,6 @@ onMounted(async () => {
       @preview-node="preview"
     />
 
-    <SettingsDialog v-model="settingsOpen" />
+    <SettingsDialog v-model="settingsOpen" @model-changed="loadGlobalModels" />
   </main>
 </template>

@@ -8,14 +8,14 @@ NetMind 是一个基于 AI 的知识网络构建与可视化工具，用于把�
 
 - 文本、文档或需求内容的 AI 结构化整理
 - 思维导图和知识节点的创建、编辑、删除、导入、导出
-- Canvas 思维导图展示、节点拖拽、缩放和平移
+- Canvas 思维导图展示、节点选择和滚轮缩放
 - 知识卡片、Markdown 内容展示和节点关联图谱
 - 节点问答、全图问答、全局问答和应用帮助等 AI Agent 入口
 - PostgreSQL 持久化存储
 
 ## 当前状态
 
-当前源码已完成 P5 AI Agent 基础接入，P6 稳定维护与 Agent 能力补全仍在推进中。Agent 功能依赖外部 AgentBuild 脚本目录；未配置时，普通导图、节点、数据库和基础 AI 清洗开发仍可进行。
+当前源码已完成 P5 AI Agent 基础接入，P6 稳定维护与 Agent 能力补全仍在推进中。发布包封装 `publish/agent` 中已有的 Agent 文件夹，安装后放到软件根目录 `agent/`；如需更完整的外部 AgentBuild 能力，可在设置页改为其他脚本目录。
 
 ## 技术栈
 
@@ -25,7 +25,7 @@ NetMind 是一个基于 AI 的知识网络构建与可视化工具，用于把�
 | 数据库 | PostgreSQL |
 | 前端 | Vue 3 + Vite + Element Plus |
 | AI | DeepSeek Cloud / Ollama Local，可通过配置切换 |
-| Agent | 外部 AgentBuild 脚本目录 |
+| Agent | 发布包中的 `publish/agent/src/agent_kernel.py`，可切换外部 AgentBuild 脚本目录 |
 
 ## 开发环境
 
@@ -55,10 +55,14 @@ psql -h localhost -p 5432 -U postgres -d netmind -f "AI文档/SQL/Init.sql"
 
 如果需要从旧库升级，按文件名顺序执行 `AI文档/SQL/P*.sql` 迁移脚本。
 
-运行后端前，通过 `PGSTR` 环境变量提供 PostgreSQL 连接字符串：
+运行后端前，通过本机配置文件提供 PostgreSQL 连接字符串。复制 `src/NetMind.WebApi/appsettings.Local.example.json` 为 `src/NetMind.WebApi/appsettings.Local.json`，填写：
 
-```powershell
-$env:PGSTR="Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
+```json
+{
+  "ConnectionStrings": {
+    "Postgres": "Host=localhost;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
+  }
+}
 ```
 
 ### 2. 安装前端依赖
@@ -71,27 +75,23 @@ cd ..\..
 
 ### 3. 配置 AI 模型
 
-使用 DeepSeek Cloud 时，配置 API Key：
-
-```powershell
-$env:DEEPSEEK_API_KEY="你的 DeepSeek API Key"
-```
+使用 DeepSeek Cloud 时，在顶部「设置」→「AI 大模型配置」填写 API Key；前端发给后端前会先进行 RSA-OAEP 加密。API Key 不再从服务端配置文件读取。
 
 使用 Ollama Local 时，请先启动 Ollama 服务，并确认 `src/NetMind.WebApi/appsettings*.json` 中配置的模型名称已在本机拉取。
 
-真实 API Key 不应写入仓库。开发时优先使用环境变量，或在前端设置页为本机浏览器配置自定义模型。
+真实 API Key 不应写入仓库内的 `appsettings*.json`。请使用设置页填写。
 
-### 4. 配置 AgentBuild
+### 4. 配置 Agent 脚本
 
-Agent 功能需要外部 AgentBuild 目录，目录内至少应包含：
+Agent 功能默认使用仓库内置脚本，目录结构为：
 
 ```text
-AgentBuild/
+agent/
 └── src/
     └── agent_kernel.py
 ```
 
-应用前端可以自行配置 AgentBuild 路径：顶部「设置」→「AgentBuild 脚本设置」。仓库中的默认路径只是开发者本机示例，首次运行时请改成你自己的 AgentBuild 根目录。
+应用前端可以自行配置 Agent 路径：顶部「设置」→「AgentBuild 脚本设置」。发布包默认路径为软件安装目录下的 `agent/`。
 
 后端默认使用 `py` 启动 Python。如果你的机器没有 Windows Python Launcher，或者 `py` 无法找到正确的 Python 版本，请选择其中一种方式处理：
 
@@ -170,12 +170,12 @@ npm run build --prefix src\NetMind.Frontend
 - `src/NetMind.WebApi/appsettings.json`
 - `src/NetMind.WebApi/appsettings.Development.json`
 
-常用环境变量：
+常用配置：
 
-| 变量 | 说明 |
+| 配置 | 说明 |
 | --- | --- |
-| `PGSTR` | PostgreSQL 完整连接字符串，后端运行必需 |
-| `DEEPSEEK_API_KEY` | DeepSeek Cloud API Key，使用 DeepSeek 时需要 |
+| `ConnectionStrings:Postgres` | PostgreSQL 完整连接字符串，建议写入本机 `appsettings.Local.json` |
+| 设置页 AI 大模型配置 | API Key、API 地址和 model 名称；请求前会加密 API Key |
 | `ASPNETCORE_URLS` | 可选，覆盖后端监听地址 |
 
 ## 开发文档

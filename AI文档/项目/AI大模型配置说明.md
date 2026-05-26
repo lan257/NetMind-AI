@@ -1,6 +1,16 @@
 # AI 大模型配置说明
 
-更新时间：2026-05-22
+更新时间：2026-05-26
+
+## P6.2.0 新增：应用配置优化
+
+P6.2.0 将数据库连接、API Key 和 Agent 默认路径从环境变量/本机示例路径收束到文件配置与设置页。
+
+- **数据库连接**：后端只读取配置文件 `ConnectionStrings:Postgres`。真实连接串建议写入本机 `appsettings.Local.json`，不再使用 `PGSTR`。
+- **API Key 来源**：API Key 只在前端设置页填写；前端发起 AI 请求前会通过 `/api/system/crypto/api-key-public-key` 获取公钥，并用 RSA-OAEP-SHA256 加密 `apiKey` 字段。
+- **设置保存策略**：设置页改为显式「保存/取消」。自定义模型新增 `model` 字段，用于传递真实模型名称，例如 `deepseek-v4-flash`、`deepseek-v4-pro`。
+- **Agent 默认路径**：后端默认 `AiAgent.AgentBuildPath=../agent`。安装包会把 `publish/agent` 放到软件根目录下的 `agent/`，Docker 镜像复制到 `/agent`。
+- **日志保护**：接口日志会对请求体中的 `apiKey` 字段做脱敏；正常前端请求进入日志时已是密文。
 
 ## P6.1.5 新增：Agent 调用瘦身
 
@@ -103,8 +113,8 @@ P4.4 将 AI 模型选择统一为全局默认模型，所有 AI 功能（AI 清�
 
 - **选择入口**：顶部导航栏「设置」→「全局默认 AI 模型」
 - **模型来源**：后端配置模型（`appsettings.json`）+ 前端自定义模型（`localStorage`）合并展示
-- **内置模型 API Key 覆盖**：可为后端内置模型设置覆盖 API Key（替代环境变量），同样存储在浏览器 localStorage
-- **自定义模型传参**：前端通过请求体的 `endpoint`、`provider`、`apiKey` 字段直传自定义模型配置到后端，后端动态构建临时模型实例
+- **内置模型 API Key 覆盖**：可为后端内置模型设置覆盖 API Key，同样存储在浏览器 localStorage
+- **自定义模型传参**：前端通过请求体的 `endpoint`、`provider`、`model`、加密后的 `apiKey` 字段传递自定义模型配置到后端，后端动态构建临时模型实例
 - **API Key 缺失提示**：当模型缺少 API Key 时，后端返回中文引导提示，指导用户在设置中配置
 
 ## P4.1 新增：前端自定义模型配置
@@ -112,21 +122,21 @@ P4.4 将 AI 模型选择统一为全局默认模型，所有 AI 功能（AI 清�
 P4.1 新增前端设置弹窗，支持用户通过浏览器界面自行配置 AI 模型，无需修改后端配置文件：
 
 - **配置入口**：顶部导航栏"设置"按钮
-- **配置内容**：模型名称、API 地址、API Key
-- **存储方式**：API Key 仅存储在浏览器 `localStorage`，不提交到 Git 仓库，不发送到后端服务器
-- **请求流程**：前端自定义模型的 API Key 通过请求体的 `ApiKey` 字段传递给后端，后端优先使用该 Key
+- **配置内容**：模型名称、API 地址、model 名称、API Key
+- **存储方式**：API Key 仅存储在浏览器 `localStorage`，不提交到 Git 仓库
+- **请求流程**：前端自定义模型的 API Key 通过请求体的 `apiKey` 字段加密传递给后端，后端解密后优先使用该 Key
 - **上下文设置**：支持配置上下文长度（1K~1M，推荐 50K），当前为配置项暂未对接后端
 
 后端配置（`appsettings.json`）与前端自定义模型可并存。前端自定义模型仅在前端使用，不影响后端服务端配置的模型。
 
 ## P3.0 配置目标
 
-P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettings.json` / `appsettings.Development.json` 管理，真实 API Key 不再写入仓库；长 Prompt 迁移到独立中文文本配置文件，便于直接阅读、编辑和评审。
+P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettings.json` / `appsettings.Development.json` 管理，真实 API Key 不写入仓库；长 Prompt 迁移到独立中文文本配置文件，便于直接阅读、编辑和评审。P6.2 后真实 Key 改由设置页加密传递。
 
 - 云模型优先：默认使用 DeepSeek 云接口。
 - 本地模型备用：DeepSeek 不可用且未指定 `modelId` 时，回退到本机 Ollama。
 - 模型配置来源：`src/NetMind.WebApi/appsettings.json` 与 `src/NetMind.WebApi/appsettings.Development.json`。
-- 密钥来源：只通过环境变量读取，当前 DeepSeek 使用 `DEEPSEEK_API_KEY`。
+- 密钥来源：设置页加密传递。
 - 提示词来源：`src/NetMind.WebApi/Config/AiCleanPrompts/*.prompt.md`。
 - 上下文压缩：当用户上下文超过 `ContextCompressionThreshold` 时，先调用同一模型压缩上下文，再进入需求结构化提示词。
 
@@ -165,10 +175,10 @@ P3.0 对 AI 配置做安全和可维护性优化：模型参数仍由 `appsettin
         "Id": "deepseek-cloud",
         "Provider": "deepseek",
         "Endpoint": "https://api.deepseek.com/chat/completions",
-        "Model": "deepseek-chat",
+        "Model": "deepseek-v4-flash",
         "Enabled": true,
         "IsDefault": true,
-        "ApiKeyEnvironmentVariable": "DEEPSEEK_API_KEY",
+        "ApiKey": "",
         "TimeoutSeconds": 60
       }
     ]
@@ -220,11 +230,13 @@ Prompt 文件会随 `NetMind.WebApi` 构建复制到输出目录。发布包如�
 
 真实 API Key 不允许写入仓库内任何 `appsettings*.json` 或发布配置文件。当前推荐做法：
 
-```powershell
-$env:DEEPSEEK_API_KEY="你的真实密钥"
+```json
+{
+  "API Key": "请在应用设置页填写，不写入 appsettings.Local.json"
+}
 ```
 
-生产环境应使用服务器环境变量、容器 Secret、CI/CD Secret 或部署平台密钥管理。由于此前仓库配置中出现过明文 Key，合并前建议在 GitHub / DeepSeek 控制台轮换该 Key，并检查远端历史记录是否需要清理。
+API Key 只在前端设置页填写。前端设置页提交 AI 请求时会先加密 `apiKey` 字段，后端解密后转发给模型服务。由于此前仓库配置中出现过明文 Key，合并前建议在 GitHub / DeepSeek 控制台轮换该 Key，并检查远端历史记录是否需要清理。
 
 ## 提示词编写规范
 
@@ -232,21 +244,25 @@ $env:DEEPSEEK_API_KEY="你的真实密钥"
 2. 业务规则写在 Prompt 文件中：层级深度、节点数量、标题长度、内容粒度、关系类型建议都应在文本配置里维护。
 3. System Prompt 只放稳定约束：不要把频繁调整的业务拆解规则写到系统约束里。
 4. 模板按指令块分段：角色定义、输出格式、结构规则、质量规则、约束和用户输入区。
-5. 不把密钥和提示词混写：API Key 只通过模型配置的环境变量名引用，Prompt 不写密钥、endpoint 或真实模型凭证。
+5. 不把密钥和提示词混写：API Key 只通过设置页加密传递，Prompt 不写密钥、endpoint 或真实模型凭证。
 6. 变更要求同步记录：修改 AI 配置或 Prompt 后，同步更新本文档和对应开发日志。
 
 ## 运行要求
 
-- DeepSeek：运行服务前设置环境变量 `DEEPSEEK_API_KEY`。
+- DeepSeek：在设置页填写 API Key。
 - Ollama：本地启动 Ollama，并确认模型名与配置中的 `Model` 一致。
 - AI 返回必须是 `netmind.mindmap.v1` JSON；后端会继续校验结构版本、节点、父子关系和关联端点。
 
 ## 数据库配置
 
-数据库连接字符串通过 `PGSTR` 环境变量传入：
+数据库连接字符串通过配置文件传入：
 
-```powershell
-$env:PGSTR="Host=127.0.0.1;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
+```json
+{
+  "ConnectionStrings": {
+    "Postgres": "Host=127.0.0.1;Port=5432;Database=netmind;Username=postgres;Password=your_password;"
+  }
+}
 ```
 
 运行接口前需要先创建 PostgreSQL 数据库并执行：

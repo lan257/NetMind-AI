@@ -2,7 +2,7 @@ namespace NetMind.Services.Configurations;
 
 public sealed class AiAgentOptions
 {
-    public string AgentBuildPath { get; init; } = @"G:\AAW+\NetMind\AgentBuild";
+    public string AgentBuildPath { get; init; } = "../agent";
 
     public string PythonExecutable { get; init; } = "py";
 
