@@ -1,0 +1,11 @@
+﻿{
+    "domain_tool_bindings":  {
+                                 "default":  "lists/default.yaml",
+                                 "file_reader":  "lists/file_reader.yaml",
+                                 "developer":  "lists/developer.yaml",
+                                 "admin":  "lists/admin.yaml",
+                                 "test":  "lists/file_reader.yaml",
+                                 "netmind":  "lists/netmind.yaml",
+                                 "skill":  "lists/skill.yaml"
+                             }
+}

@@ -1,0 +1,22 @@
+{
+  "tool_id": "node_list_by_map",
+  "tool_name": "查询导图下节点",
+  "description": "查询某个导图下的所有节点",
+  "trigger": "当需要查询某个思维导图中的所有节点时使用",
+  "params": {
+    "mapId": "number"
+  },
+  "param_descriptions": {
+    "mapId": "导图 ID"
+  },
+  "permission_level": "none",
+  "permission_message": "是否允许查询导图 {mapId} 下的节点",
+  "script_path": ".tool/tools/node_list_by_map/run.py",
+  "category": "netmind",
+  "tags": [
+    "node",
+    "list",
+    "query",
+    "mindmap"
+  ]
+}

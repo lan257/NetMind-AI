@@ -1,0 +1,26 @@
+{
+  "tool_id": "node_search",
+  "tool_name": "搜索节点",
+  "description": "按关键词搜索节点，可限定导图范围",
+  "trigger": "当需要按关键词搜索思维导图中的节点时使用",
+  "params": {
+    "mapId": "number",
+    "keyword": "string",
+    "limit": "number"
+  },
+  "param_descriptions": {
+    "mapId": "导图 ID，为空则搜索全部导图",
+    "keyword": "搜索关键词",
+    "limit": "返回节点数量上限"
+  },
+  "permission_level": "none",
+  "permission_message": "是否允许搜索节点 (关键词: {keyword})",
+  "script_path": ".tool/tools/node_search/run.py",
+  "category": "netmind",
+  "tags": [
+    "node",
+    "search",
+    "keyword",
+    "mindmap"
+  ]
+}

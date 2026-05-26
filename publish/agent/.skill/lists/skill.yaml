@@ -1,0 +1,37 @@
+skills:
+  - skill_id: skill_creation_guide
+    skill_name: Skill 创建指南
+    description: 指导 Agent 创建 prompt-only Skill；Skill 只沉淀提示、流程和维护约束，不包含 run.py 或可执行参数。
+    trigger: 当用户要求创建新的 Skill、沉淀可复用工作流、补充 AI 行为规范或扩展提示型能力时使用。
+    prompt: 创建 Skill 前先确认目标是否只需要提示和流程。如果需要执行代码、读写文件或调用外部接口，应改用 Tool 创建指南。Skill 目录必须包含 skill_definition.json、workflow.md、maintenance.md，且不得包含 run.py、params、permission、script_path 等可执行字段。
+    workflow_path: workflow.md
+    maintenance_path: maintenance.md
+    category: Skill管理
+    tags: skill, 创建, prompt-only
+  - skill_id: skill_update_guide
+    skill_name: Skill 修改指南
+    description: 指导 Agent 修改 prompt-only Skill，并同步校验定义、流程、维护文档和角色列表的一致性。
+    trigger: 当用户要求修改已有 Skill 的触发条件、提示、流程、维护说明、分类标签或角色绑定时使用。
+    prompt: 修改 Skill 时先读取目录内 skill_definition.json、workflow.md、maintenance.md 和相关角色列表。保持 Skill 为 prompt-only；如果变更引入可执行能力，应转入 Tool 修改或 Tool 创建。修改后同步角色列表定义并验证 .skill 中不存在 run.py。
+    workflow_path: workflow.md
+    maintenance_path: maintenance.md
+    category: Skill管理
+    tags: skill, 修改, 一致性校验
+  - skill_id: tool_creation_guide
+    skill_name: Tool 创建指南
+    description: 指导 Agent 创建 executable Tool；Tool 才能包含 run.py、参数、权限和运行时脚本。
+    trigger: 当用户要求创建可执行工具、封装文件操作、调用接口、运行脚本、返回结构化运行结果或新增可被 Agent 调用的动作能力时使用。
+    prompt: 创建 Tool 时使用 .tool/tools/<tool_id>/ 三件套：tool_definition.json、run.py、tool.md，并注册到 .tool/lists/<role>.yaml。Tool 定义必须声明 params、permission_level、permission_message、script_path；script_path 必须指向 .tool/tools/<tool_id>/run.py。不要把可执行 Tool 放入 .skill。
+    workflow_path: workflow.md
+    maintenance_path: maintenance.md
+    category: Tool管理
+    tags: tool, 创建, executable
+  - skill_id: tool_update_guide
+    skill_name: Tool 修改指南
+    description: 指导 Agent 修改 executable Tool，并保持定义、脚本、文档、权限和角色列表一致。
+    trigger: 当用户要求修改已有 Tool 的功能、参数、权限、脚本逻辑、文档说明或角色绑定时使用。
+    prompt: 修改 Tool 时先读取 tool_definition.json、run.py、tool.md 和引用它的角色列表。参数、权限、文档和实现必须同步更新；变更后将目录内 canonical 定义同步到角色列表，并运行 Tool 库校验。不要把 prompt-only Skill 的 workflow 写进 Tool 作为替代实现。
+    workflow_path: workflow.md
+    maintenance_path: maintenance.md
+    category: Tool管理
+    tags: tool, 修改, 一致性校验

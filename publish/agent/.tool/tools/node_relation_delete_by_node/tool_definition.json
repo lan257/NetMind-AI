@@ -1,0 +1,22 @@
+{
+  "tool_id": "node_relation_delete_by_node",
+  "tool_name": "删除节点相关关系",
+  "description": "删除某节点相关的所有关系",
+  "trigger": "当需要删除某个节点相关的所有关联关系时使用",
+  "params": {
+    "nodeId": "number"
+  },
+  "param_descriptions": {
+    "nodeId": "节点 ID"
+  },
+  "permission_level": "confirm",
+  "permission_message": "是否允许删除节点相关关系 (nodeId: {nodeId})",
+  "script_path": ".tool/tools/node_relation_delete_by_node/run.py",
+  "category": "netmind",
+  "tags": [
+    "node",
+    "relation",
+    "delete",
+    "mindmap"
+  ]
+}

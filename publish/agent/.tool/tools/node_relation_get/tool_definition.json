@@ -1,0 +1,22 @@
+{
+  "tool_id": "node_relation_get",
+  "tool_name": "查询单个关系",
+  "description": "按ID查询节点关系",
+  "trigger": "当需要按ID查询某个节点关系的详细信息时使用",
+  "params": {
+    "id": "number"
+  },
+  "param_descriptions": {
+    "id": "关系 ID"
+  },
+  "permission_level": "none",
+  "permission_message": "是否允许查询关系 {id}",
+  "script_path": ".tool/tools/node_relation_get/run.py",
+  "category": "netmind",
+  "tags": [
+    "node",
+    "relation",
+    "get",
+    "mindmap"
+  ]
+}

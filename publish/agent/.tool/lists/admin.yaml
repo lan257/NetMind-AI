@@ -1,0 +1,104 @@
+tools:
+  - tool_id: tree_reader
+    tool_name: 目录树读取
+    description: 读取指定路径的目录结构，返回树形格式的文本描述
+    trigger: 当需要查看目录结构、文件组织、项目架构时使用
+    params:
+      target_path: string
+      max_depth: number
+      ignore_hidden: boolean
+      ignore_patterns: array
+    permission_level: none
+    permission_message: 是否允许读取 {target_path} 的目录结构
+    script_path: .tool/tools/tree_reader/run.py
+    category: 工具
+  - tool_id: create_folder
+    tool_name: 创建文件夹
+    description: 创建文件夹（目录），如果父目录不存在会递归创建。不创建文件。
+    trigger: 当需要创建目录、建立文件夹结构时使用
+    params:
+      folder_path: string
+      exist_ok: boolean
+    permission_level: confirm
+    permission_message: 是否允许创建文件夹: {folder_path}
+    script_path: .tool/tools/create_folder/run.py
+    category: 文件操作
+  - tool_id: read_doc
+    tool_name: 文件读取
+    description: 读取指定文件内容
+    trigger: 当需要读取文件内容时使用
+    params:
+      filepath: string
+    permission_level: none
+    permission_message: 是否允许读取 {filepath}
+    script_path: .tool/tools/read_doc/run.py
+    category: 文件操作
+  - tool_id: file_search
+    tool_name: 文件查找
+    description: 在指定目录中搜索文件名匹配模式的文件（不能查询文件夹，若查询失败可以使用tree_reader skill）。pattern参数支持通配符格式：*（匹配任意多个字符）、?（匹配单个字符）、[abc]（匹配字符集合中的任意一个）。例如：*.json匹配所有JSON文件，data_?.csv匹配data_1.csv、data_a.csv等。
+    trigger: 当需要查找文件、搜索文件名时使用
+    params:
+      search_dir: string
+      pattern: string
+      recursive: boolean
+    permission_level: none
+    permission_message: 是否允许在 {search_dir} 中搜索文件模式 {pattern}？
+    script_path: .tool/tools/file_search/run.py
+    category: 文件操作
+  - tool_id: line_modifier
+    tool_name: 精准文件行数修改
+    description: 修改指定文件的指定行范围内容；单次最多修改 40 行、写入 4000 字符。⚠️ 重要：文件必须已存在！如需创建新文件请使用 create_file。需要检查json格式是否被破坏
+    trigger: 当需要小块、精准地修改文件特定行内容时使用；禁止用于整文件写入,如果文件不存在，请先调用 create_file。
+    params:
+      filepath: string
+      start_line: integer
+      end_line: integer
+      new_content: string
+    permission_level: confirm
+    permission_message: 是否允许修改文件 {filepath} 的第 {start_line} 到 {end_line} 行？
+    script_path: .tool/tools/line_modifier/run.py
+    policy:
+      required_params: filepath,start_line,end_line,new_content
+      max_target_lines: 40
+      max_content_lines: 40
+      max_content_chars: 4000
+    category: 文件操作
+    tags: 文件修改, 精准行数
+  - tool_id: line_reader
+    tool_name: 精准文件行数读取
+    description: 读取指定文件的指定行范围内容，支持行号指定或全面读取,优先行号指定读取
+    trigger: 当需要读取文件特定行、或遍历大文件时使用
+    params:
+      filepath: string
+      start_line: number
+      end_line: number
+    permission_level: none
+    permission_message: 是否允许读取文件 {filepath} 的行内容
+    script_path: .tool/tools/line_reader/run.py
+    category: 文件操作
+    tags: 文件读取, 精准行数
+  - tool_id: create_file
+    tool_name: 创建文件
+    description: 仅在指定路径创建空文件（不写入任何内容），并自动创建父目录。创建后文件大小为0字节。
+    trigger: 当需要创建空文件时使用。如果需要创建并写入内容，请先创建空文件。
+    params:
+      file_path: string
+      encoding: string
+      overwrite: boolean
+    permission_level: confirm
+    permission_message: 是否允许创建文件: {file_path}
+    script_path: .tool/tools/create_file/run.py
+    category: 文件操作
+  - tool_id: modify_file
+    tool_name: 修改文件内容
+    description: ⚠️ 备用方案：仅当 line_modifier 多次失败后才使用此 Skill。正常情况下请优先使用 line_modifier（精准文件行数修改）。此 Skill 用于修改已存在的文件内容（替换、追加或覆盖）。参数说明：operation 可选值为 replace（替换old_string为content）、append（在文件末尾追加content）、overwrite（用content覆盖整个文件）。当operation为replace时，必须同时提供old_string和content；当operation为append或overwrite时，只需提供content。
+    trigger: ⚠️ 仅作为兜底使用！当 line_modifier 连续失败3次以上，或者遇到 line_modifier 无法处理的特殊情况时，才考虑使用此 Skill。日常文件修改请优先使用 line_modifier。
+    params:
+      filepath: string
+      operation: string
+      content: string
+      old_string: string
+    permission_level: high
+    permission_message: 是否允许修改文件 {filepath}
+    script_path: .tool/tools/modify_file/run.py
+    category: 文件操作

@@ -1,0 +1,15 @@
+{
+  "skill_id": "skill_update_guide",
+  "skill_name": "Skill 修改指南",
+  "description": "指导 Agent 修改 prompt-only Skill，并同步校验定义、流程、维护文档和角色列表的一致性。",
+  "trigger": "当用户要求修改已有 Skill 的触发条件、提示、流程、维护说明、分类标签或角色绑定时使用。",
+  "prompt": "修改 Skill 时先读取目录内 skill_definition.json、workflow.md、maintenance.md 和相关角色列表。保持 Skill 为 prompt-only；如果变更引入可执行能力，应转入 Tool 修改或 Tool 创建。修改后同步角色列表定义并验证 .skill 中不存在 run.py。",
+  "workflow_path": "workflow.md",
+  "maintenance_path": "maintenance.md",
+  "category": "Skill管理",
+  "tags": [
+    "skill",
+    "修改",
+    "一致性校验"
+  ]
+}

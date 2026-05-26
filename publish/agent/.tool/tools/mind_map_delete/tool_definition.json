@@ -1,0 +1,20 @@
+{
+  "tool_id": "mind_map_delete",
+  "tool_name": "删除导图",
+  "description": "删除单个思维导图，不级联删除关联节点",
+  "trigger": "当需要删除一个思维导图且不删除其节点时使用",
+  "params": {
+    "id": "long"
+  },
+  "param_descriptions": {
+    "id": "导图 ID"
+  },
+  "permission_level": "confirm",
+  "permission_message": "是否允许删除导图？ID={id}",
+  "script_path": ".tool/tools/mind_map_delete/run.py",
+  "category": "netmind",
+  "tags": [
+    "mindmap",
+    "delete"
+  ]
+}
