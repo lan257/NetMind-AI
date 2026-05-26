@@ -130,10 +130,6 @@ function getToolName(call) {
     call?.toolName ||
     call?.tool_id ||
     call?.toolId ||
-    call?.skill_name ||
-    call?.skillName ||
-    call?.skill_id ||
-    call?.skillId ||
     '工具';
 }
 
@@ -179,6 +175,13 @@ function getToolStatusType(call) {
   if (status === 'permission_approved') return 'success';
   if (status === 'failed' || status === 'permission_denied') return 'danger';
   return 'info';
+}
+
+function getToolStatusClass(call) {
+  const status = getToolStatus(call);
+  if (status === 'permission_approved' || status === 'success') return 'status-approved';
+  if (status === 'permission_denied' || status === 'failed') return 'status-denied';
+  return '';
 }
 
 function getPermissionMessage(call) {
@@ -261,7 +264,7 @@ function isWaitingPermission(call) {
             <p class="chat-empty-hint">该模式尚未实现，敬请期待</p>
           </template>
         </div>
-        <div v-for="(msg, idx) in chat.messages.value" :key="idx" :class="['chat-message', `msg-${msg.role}`]">
+        <div v-for="(msg, idx) in chat.messages.value" :key="idx" :class="['chat-message', `msg-${msg.role}`, msg.tone ? `tone-${msg.tone}` : '']">
           <div class="msg-role">{{ msg.role === 'user' ? '你' : msg.role === 'assistant' ? 'AI' : '系统' }}</div>
           <div v-if="msg.agent?.progressText" class="agent-progress">
             <div class="agent-progress-head">
@@ -272,13 +275,13 @@ function isWaitingPermission(call) {
             <div class="agent-progress-text markdown-body" v-html="renderMarkdown(msg.agent.progressText)"></div>
           </div>
           <div v-if="msg.content" class="msg-content markdown-body" v-html="renderMarkdown(msg.content)"></div>
-          <div v-if="msg.agent?.toolCalls?.length" class="agent-skill-list">
-            <div v-for="call in msg.agent.toolCalls" :key="call.call_id || call.callId || call.tool_id || call.toolId || call.skill_id || call.skillId" class="agent-skill-item">
-              <div class="agent-skill-head">
+          <div v-if="msg.agent?.toolCalls?.length" class="agent-tool-list">
+            <div v-for="call in msg.agent.toolCalls" :key="call.call_id || call.callId || call.tool_id || call.toolId" :class="['agent-tool-item', getToolStatusClass(call)]">
+              <div class="agent-tool-head">
                 <span>{{ getToolName(call) }}</span>
                 <el-tag size="small" :type="getToolStatusType(call)">{{ getToolStatusText(call) }}</el-tag>
               </div>
-              <div v-if="getToolReason(call)" class="agent-skill-reason">{{ getToolReason(call) }}</div>
+              <div v-if="getToolReason(call)" class="agent-tool-reason">{{ getToolReason(call) }}</div>
               <div v-if="isWaitingPermission(call)" class="agent-permission">
                 <p>{{ getPermissionMessage(call) }}</p>
                 <div class="agent-permission-actions">
@@ -496,6 +499,16 @@ function isWaitingPermission(call) {
   color: var(--el-color-danger);
 }
 
+.msg-system.tone-success .msg-content {
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+}
+
+.msg-system.tone-danger .msg-content {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
 .agent-progress {
   padding: 7px 8px;
   border: 1px solid var(--el-color-warning-light-5);
@@ -526,20 +539,30 @@ function isWaitingPermission(call) {
   color: var(--el-text-color-regular);
 }
 
-.agent-skill-list {
+.agent-tool-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.agent-skill-item {
+.agent-tool-item {
   padding: 7px 8px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
   background: var(--el-fill-color-lighter);
 }
 
-.agent-skill-head {
+.agent-tool-item.status-approved {
+  border-color: var(--el-color-success-light-7);
+  background: var(--el-color-success-light-9);
+}
+
+.agent-tool-item.status-denied {
+  border-color: var(--el-color-danger-light-7);
+  background: var(--el-color-danger-light-9);
+}
+
+.agent-tool-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -549,7 +572,15 @@ function isWaitingPermission(call) {
   color: var(--el-text-color-primary);
 }
 
-.agent-skill-reason {
+.agent-tool-item.status-approved .agent-tool-head {
+  color: var(--el-color-success);
+}
+
+.agent-tool-item.status-denied .agent-tool-head {
+  color: var(--el-color-danger);
+}
+
+.agent-tool-reason {
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.4;

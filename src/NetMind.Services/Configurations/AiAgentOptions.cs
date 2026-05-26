@@ -16,7 +16,7 @@ public sealed class AiAgentOptions
 
     public string NetMindApiBaseUrl { get; init; } = "http://127.0.0.1:5120";
 
-    public int SkillRuntimeTimeoutSeconds { get; init; } = 10;
+    public int ToolRuntimeTimeoutSeconds { get; init; } = 10;
 
     public AiAgentScenarioOptions NodeQuestion { get; init; } = new();
 
@@ -29,7 +29,7 @@ public sealed class AiAgentOptions
 
 public sealed class AiAgentScenarioOptions
 {
-    public string DomainAndSkillBinding { get; init; } = "netmind";
+    public string Domain { get; init; } = "netmind";
 
     public IReadOnlyList<string> IdentityLines { get; init; } = Array.Empty<string>();
 

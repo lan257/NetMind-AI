@@ -54,7 +54,7 @@ function getCallId(call) {
 }
 
 function getToolId(call) {
-  return call?.tool_id || call?.toolId || call?.skill_id || call?.skillId || '';
+  return call?.tool_id || call?.toolId || '';
 }
 
 function getToolName(call) {
@@ -62,10 +62,6 @@ function getToolName(call) {
     call?.toolName ||
     call?.tool_id ||
     call?.toolId ||
-    call?.skill_name ||
-    call?.skillName ||
-    call?.skill_id ||
-    call?.skillId ||
     '工具';
 }
 
@@ -165,7 +161,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
 
   function applyChatResult(result) {
     const isAgentProgress = isAgentMode(chatMode.value) && isAgentProgressStatus(result.status);
-    const toolCalls = result.toolCalls || result.skillCalls || [];
+    const toolCalls = result.toolCalls || [];
     const assistantMessage = {
       role: 'assistant',
       content: isAgentProgress ? '' : (result.reply || result.mainText || '')
@@ -347,6 +343,7 @@ export function useNodeAiChat(initialMode = 'node-agent') {
     const reasonText = rejectReason?.trim();
     messages.value.push({
       role: 'system',
+      tone: approved ? 'success' : 'danger',
       content: approved
         ? `已允许执行：${toolName}`
         : `已拒绝执行：${toolName}${reasonText ? `\n原因：${reasonText}` : ''}`

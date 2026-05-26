@@ -9,7 +9,7 @@ namespace NetMind.WebApi.Controllers;
 [Route("api/ai")]
 public sealed class AiController : ControllerBase
 {
-    private const string FixedAgentRoleMapping = "netmind";
+    private const string FixedAgentDomain = "netmind";
 
     private readonly IAiCleanService _aiCleanService;
     private readonly IAiAgentService _aiAgentService;
@@ -130,7 +130,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
-            ApplyFixedAgentRoleMapping(request);
+            ApplyFixedAgentDomain(request);
             var result = await _aiAgentService.ChatWithNodeAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -147,7 +147,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
-            ApplyFixedAgentRoleMapping(request);
+            ApplyFixedAgentDomain(request);
             var result = await _aiAgentService.ChatWithMapAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -164,7 +164,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
-            ApplyFixedAgentRoleMapping(request);
+            ApplyFixedAgentDomain(request);
             var result = await _aiAgentService.ChatWithGlobalAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -181,7 +181,7 @@ public sealed class AiController : ControllerBase
     {
         try
         {
-            ApplyFixedAgentRoleMapping(request);
+            ApplyFixedAgentDomain(request);
             var result = await _aiAgentService.ChatWithAppHelpAgentAsync(request);
             await SaveAgentConversationAsync(request, result);
 
@@ -273,7 +273,7 @@ public sealed class AiController : ControllerBase
         {
             ConversationId = request.ConversationId,
             Role = "user",
-            Content = string.IsNullOrWhiteSpace(request.Message) ? "用户处理了 Agent Skill 权限。" : request.Message,
+            Content = string.IsNullOrWhiteSpace(request.Message) ? "用户处理了 Agent Tool 权限。" : request.Message,
             ModelId = request.ModelId
         });
         await _conversationRecordService.CreateAsync(new CreateAiConversationRecordRequest
@@ -287,8 +287,8 @@ public sealed class AiController : ControllerBase
         });
     }
 
-    private static void ApplyFixedAgentRoleMapping(AiAgentChatRequest request)
+    private static void ApplyFixedAgentDomain(AiAgentChatRequest request)
     {
-        request.DomainAndSkillBinding = FixedAgentRoleMapping;
+        request.Domain = FixedAgentDomain;
     }
 }

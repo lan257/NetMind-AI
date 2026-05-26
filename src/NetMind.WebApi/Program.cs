@@ -260,7 +260,7 @@ static AiAgentOptions LoadAiAgentOptions(IConfiguration configuration, string co
         MaxTokens = ReadInt(section["MaxTokens"], 4096),
         MaxRetries = ReadInt(section["MaxRetries"], 2),
         NetMindApiBaseUrl = appBaseUrl,
-        SkillRuntimeTimeoutSeconds = ReadInt(section["SkillRuntimeTimeoutSeconds"], 10),
+        ToolRuntimeTimeoutSeconds = ReadInt(section["ToolRuntimeTimeoutSeconds"], 10),
         NodeQuestion = ReadAiAgentScenarioOptions(
             section,
             "NodeIdentity",
@@ -292,7 +292,7 @@ static AiAgentScenarioOptions ReadAiAgentScenarioOptions(
 {
     return new AiAgentScenarioOptions
     {
-        DomainAndSkillBinding = "netmind",
+        Domain = "netmind",
         IdentityLines = ReadRequiredPromptFileLines(section, identityFileKey, contentRootPath),
         CuesLines = ReadRequiredPromptFileLines(section, cuesFileKey, contentRootPath)
     };

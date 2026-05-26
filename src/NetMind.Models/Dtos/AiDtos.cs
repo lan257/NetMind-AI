@@ -150,19 +150,13 @@ public class AiAgentChatRequest
 
     public string? AgentBuildPath { get; init; }
 
-    public string? Domain { get; init; }
-
-    public string? DomainAndSkillBinding { get; set; } = "netmind";
+    public string? Domain { get; set; }
 
     public JsonElement? AgentContext { get; init; }
 
     public IReadOnlyList<JsonElement> ConfirmedToolCalls { get; init; } = Array.Empty<JsonElement>();
 
     public IReadOnlyList<JsonElement> HistoryToolCalls { get; init; } = Array.Empty<JsonElement>();
-
-    public IReadOnlyList<JsonElement> ConfirmedSkillCalls { get; init; } = Array.Empty<JsonElement>();
-
-    public IReadOnlyList<JsonElement> HistorySkillCalls { get; init; } = Array.Empty<JsonElement>();
 }
 
 public sealed class AiNodeAgentChatRequest : AiAgentChatRequest
@@ -196,8 +190,6 @@ public sealed class AiAgentChatResult
     public string AgentTarget { get; init; } = string.Empty;
 
     public IReadOnlyList<JsonElement> ToolCalls { get; init; } = Array.Empty<JsonElement>();
-
-    public IReadOnlyList<JsonElement> SkillCalls { get; init; } = Array.Empty<JsonElement>();
 
     public JsonElement ContextUpdate { get; init; }
 

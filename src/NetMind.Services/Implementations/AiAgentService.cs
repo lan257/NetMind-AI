@@ -13,7 +13,7 @@ namespace NetMind.Services.Implementations;
 
 public sealed class AiAgentService : IAiAgentService
 {
-    private const string DefaultDomainAndSkillBinding = "netmind";
+    private const string DefaultDomain = "netmind";
     private const string AgentKernelApiVersion = "v2";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -152,8 +152,7 @@ public sealed class AiAgentService : IAiAgentService
             Reply = BuildAgentReply(kernelResponse),
             Status = kernelResponse.Status,
             AgentTarget = kernelResponse.AgentTarget,
-            ToolCalls = CloneElements(kernelResponse.GetToolCalls()),
-            SkillCalls = CloneElements(kernelResponse.GetToolCalls()),
+            ToolCalls = CloneElements(kernelResponse.ToolCalls),
             ContextUpdate = kernelResponse.ContextUpdate.ValueKind == JsonValueKind.Undefined
                 ? EmptyJsonObject()
                 : kernelResponse.ContextUpdate.Clone(),
@@ -187,7 +186,7 @@ public sealed class AiAgentService : IAiAgentService
         Dictionary<string, object?> agentContext,
         string conversationPrefix)
     {
-        var domain = ResolveDomain(request.Domain, request.DomainAndSkillBinding, scenario.DomainAndSkillBinding);
+        var domain = ResolveDomain(request.Domain, scenario.Domain);
         ApplyDomain(agentContext, domain);
 
         var userText = string.IsNullOrWhiteSpace(request.Message)
@@ -219,7 +218,7 @@ public sealed class AiAgentService : IAiAgentService
             ["shared"] = new Dictionary<string, object?>
             {
                 ["netmind_api_base_url"] = NormalizeBaseUrl(_agentOptions.NetMindApiBaseUrl),
-                ["timeout_seconds"] = Math.Max(_agentOptions.SkillRuntimeTimeoutSeconds, 1)
+                ["timeout_seconds"] = Math.Max(_agentOptions.ToolRuntimeTimeoutSeconds, 1)
             },
             ["tools"] = new Dictionary<string, object?>()
         };
@@ -599,15 +598,13 @@ public sealed class AiAgentService : IAiAgentService
         };
     }
 
-    private static string ResolveDomain(string? requestDomain, string? legacyRequestDomain, string? scenarioDomain)
+    private static string ResolveDomain(string? requestDomain, string? scenarioDomain)
     {
         var domain = string.IsNullOrWhiteSpace(requestDomain)
-            ? string.IsNullOrWhiteSpace(legacyRequestDomain)
-                ? scenarioDomain
-                : legacyRequestDomain.Trim()
+            ? scenarioDomain
             : requestDomain.Trim();
 
-        return string.IsNullOrWhiteSpace(domain) ? DefaultDomainAndSkillBinding : domain.Trim();
+        return string.IsNullOrWhiteSpace(domain) ? DefaultDomain : domain.Trim();
     }
 
     private static void ApplyDomain(Dictionary<string, object?> agentContext, string domain)
@@ -621,18 +618,12 @@ public sealed class AiAgentService : IAiAgentService
 
     private static IReadOnlyList<JsonElement> ResolveConfirmedToolCalls(AiAgentChatRequest request)
     {
-        var toolCalls = request.ConfirmedToolCalls ?? Array.Empty<JsonElement>();
-        return toolCalls.Count > 0
-            ? toolCalls
-            : request.ConfirmedSkillCalls ?? Array.Empty<JsonElement>();
+        return request.ConfirmedToolCalls ?? Array.Empty<JsonElement>();
     }
 
     private static IReadOnlyList<JsonElement> ResolveHistoryToolCalls(AiAgentChatRequest request)
     {
-        var toolCalls = request.HistoryToolCalls ?? Array.Empty<JsonElement>();
-        return toolCalls.Count > 0
-            ? toolCalls
-            : request.HistorySkillCalls ?? Array.Empty<JsonElement>();
+        return request.HistoryToolCalls ?? Array.Empty<JsonElement>();
     }
 
     private static IReadOnlyList<object?> NormalizeConfirmedToolCalls(IReadOnlyList<JsonElement>? values)
@@ -872,18 +863,10 @@ public sealed class AiAgentService : IAiAgentService
         [JsonPropertyName("tool_calls")]
         public IReadOnlyList<JsonElement> ToolCalls { get; init; } = Array.Empty<JsonElement>();
 
-        [JsonPropertyName("skill_calls")]
-        public IReadOnlyList<JsonElement> LegacySkillCalls { get; init; } = Array.Empty<JsonElement>();
-
         [JsonPropertyName("context_update")]
         public JsonElement ContextUpdate { get; init; }
 
         [JsonPropertyName("error")]
         public string? Error { get; init; }
-
-        public IReadOnlyList<JsonElement> GetToolCalls()
-        {
-            return ToolCalls.Count > 0 ? ToolCalls : LegacySkillCalls;
-        }
     }
 }

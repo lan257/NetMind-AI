@@ -94,7 +94,7 @@ var aiAgentService = new AiAgentService(
     new AiAgentOptions
     {
         NetMindApiBaseUrl = "http://127.0.0.1:5120/",
-        SkillRuntimeTimeoutSeconds = 9
+        ToolRuntimeTimeoutSeconds = 9
     },
     new AiCleanOptions
     {
@@ -177,13 +177,11 @@ static void AssertKernelV2RequestContract(AiAgentService service)
         Message = "继续执行",
         Domain = "netmind",
         ConfirmedToolCalls = new[] { Json("{\"call_id\":\"tool-call\",\"approved\":false,\"denied_reason\":\"no\"}") },
-        HistoryToolCalls = new[] { Json("{\"call_id\":\"tool-history\",\"tool_id\":\"node_get\"}") },
-        ConfirmedSkillCalls = new[] { Json("{\"call_id\":\"legacy-call\",\"approved\":true}") },
-        HistorySkillCalls = new[] { Json("{\"call_id\":\"legacy-history\",\"skill_id\":\"legacy\"}") }
+        HistoryToolCalls = new[] { Json("{\"call_id\":\"tool-history\",\"tool_id\":\"node_get\"}") }
     };
     var scenario = new AiAgentScenarioOptions
     {
-        DomainAndSkillBinding = "scenario-domain",
+        Domain = "scenario-domain",
         IdentityLines = new[] { "contract identity" },
         CuesLines = new[] { "contract cues" }
     };
@@ -202,13 +200,9 @@ static void AssertKernelV2RequestContract(AiAgentService service)
     var payload = (Dictionary<string, object?>)rawResult!;
     Assert(payload["api_version"] as string == "v2", "Agent kernel requests should opt into API v2.");
     Assert(payload["domain"] as string == "netmind", "Agent kernel requests should send the v2 domain field.");
-    Assert(!payload.ContainsKey("domain_and_skill_binding"), "Agent kernel requests should not send the v1 domain alias.");
     Assert(payload.ContainsKey("tool_runtime"), "Agent kernel requests should send tool_runtime.");
-    Assert(!payload.ContainsKey("skill_runtime"), "Agent kernel requests should not send skill_runtime.");
     Assert(payload.ContainsKey("confirmed_tool_calls"), "Agent kernel requests should send confirmed_tool_calls.");
-    Assert(!payload.ContainsKey("confirmed_skill_calls"), "Agent kernel requests should not send confirmed_skill_calls.");
     Assert(payload.ContainsKey("history_tool_calls"), "Agent kernel requests should send history_tool_calls.");
-    Assert(!payload.ContainsKey("history_skill_calls"), "Agent kernel requests should not send history_skill_calls.");
 
     var runtime = payload["tool_runtime"] as Dictionary<string, object?>;
     Assert(runtime is not null, "tool_runtime should be an object.");

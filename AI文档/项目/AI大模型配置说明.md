@@ -2,6 +2,14 @@
 
 更新时间：2026-05-22
 
+## P6.1.5 新增：Agent 调用瘦身
+
+P6.1.5 删除 NetMind Agent 调用层中的旧 v1 兼容路径，只保留 Agent Kernel API v2。
+
+- **请求/响应字段**：后端 DTO、Service 和前端续跑只保留 `tool_calls`、`confirmed_tool_calls`、`history_tool_calls` 和 `tool_id`/`tool_name`。
+- **运行时配置**：配置键改为 `AiAgent:ToolRuntimeTimeoutSeconds`，继续写入 `tool_runtime.shared.timeout_seconds`。
+- **前端展示**：Tool 权限允许显示绿色反馈，拒绝和失败才使用红色反馈，避免把同意操作渲染为错误状态。
+
 ## P6.1.3 新增：应用帮助使用技巧自维护
 
 P6.1.3 在应用帮助的追加型学习记录之外，新增一份可持续整理的使用技巧文档，供应用帮助 Agent 沉淀稳定经验。
@@ -16,7 +24,7 @@ P6.1.3 在应用帮助的追加型学习记录之外，新增一份可持续整�
 NetMind 调用外部 AgentBuild 内核时已切到 API v2，避免继续依赖旧 `skill_*` 协议。
 
 - **请求协议**：后端显式传入 `api_version=v2`，使用 `domain`、`tool_runtime`、`confirmed_tool_calls` 和 `history_tool_calls`。
-- **响应协议**：后端优先读取 `tool_calls`，并把 Tool 调用记录交给前端展示和续跑；旧 Skill 字段只保留 NetMind API 兼容入口。
+- **响应协议**：后端只读取 `tool_calls`，并把 Tool 调用记录交给前端展示和续跑。
 - **运行时配置**：NetMind WebAPI 地址和超时写入 `tool_runtime.shared`，由 AgentBuild 在执行 Tool 前注入 `params.__runtime`。
 - **Prompt 口径**：Agent 场景提示要求模型输出 `tool_call_drafts` / `tool_id`，不再提示旧 `skill_call_drafts`。
 
@@ -72,7 +80,7 @@ P5.0 将「节点问答（Agent）」接入独立的 AgentBuild AI Agent 内核�
     "Temperature": 0.2,
     "MaxTokens": 4096,
     "MaxRetries": 2,
-    "SkillRuntimeTimeoutSeconds": 10,
+    "ToolRuntimeTimeoutSeconds": 10,
     "PromptFiles": {
       "NodeIdentity": "Config/AiCleanPrompts/node-agent-identity.prompt.md",
       "NodeCues": "Config/AiCleanPrompts/node-agent-cues.prompt.md",
