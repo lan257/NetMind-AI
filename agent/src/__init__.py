@@ -1,2 +1,0 @@
-"""AgentBuild agent kernel package."""
-
