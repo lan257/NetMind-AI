@@ -17,6 +17,16 @@ DEFAULT_MAX_RETRIES = 3
 FAKE_MODEL_NAMES = {"fake", "mock", "test"}
 
 
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _sanitize_surrogates(text: str) -> str:
+    """Remove lone surrogates that break UTF-8 encoding."""
+    if not text:
+        return text
+    return _SURROGATE_RE.sub("�", text)
+
+
 def call_llm(
     prompt: str,
     request: AgentRequest,
@@ -204,7 +214,7 @@ def _post_chat_completion(
     """Post one chat completion request and parse the HTTP JSON body."""
     payload = {
         "model": model_config["model_name"],
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": _sanitize_surrogates(prompt)}],
         "temperature": float(model_config.get("temperature", 0.2)),
         "max_tokens": int(model_config.get("max_tokens", 4096)),
     }
@@ -222,6 +232,7 @@ def _post_chat_completion(
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
+            "User-Agent": "AgentBuild/1.0",
         },
         method="POST",
     )
@@ -247,7 +258,7 @@ def _extract_chat_content(raw_response: dict[str, Any]) -> str:
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
         raise ValueError(f"大模型 API 响应缺少 content；响应摘要: {_summarize_api_response(raw_response)}")
-    return content
+    return _sanitize_surrogates(content)
 
 
 def _summarize_api_response(raw_response: dict[str, Any]) -> str:
