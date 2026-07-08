@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using NetMind.Common.Responses;
@@ -12,7 +13,8 @@ public sealed class MindMapTransferController : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     private readonly IMindMapTransferService _transferService;
@@ -113,7 +115,7 @@ public sealed class MindMapTransferController : ControllerBase
     private static FileContentResult JsonFile<T>(T value, string fileName)
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
-        return new FileContentResult(json, "application/json")
+        return new FileContentResult(json, "application/json; charset=utf-8")
         {
             FileDownloadName = fileName
         };
