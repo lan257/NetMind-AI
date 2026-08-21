@@ -1,5 +1,5 @@
 #define MyAppName "NetMind"
-#define MyAppVersion "1.7.5"
+#define MyAppVersion "1.7.6"
 #define MyAppPublisher "NetMind"
 #define MyAppExeName "NetMind.WebApi.exe"
 
