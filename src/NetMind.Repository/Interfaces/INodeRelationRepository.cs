@@ -9,6 +9,7 @@ public interface INodeRelationRepository
     Task<IReadOnlyList<NodeRelationEntity>> ListBySourceAsync(long sourceId);
 
     Task<IReadOnlyList<NodeRelationEntity>> ListByNodeAsync(long nodeId);
+Task<IReadOnlyList<NodeRelationEntity>> GetByNodeIdsAsync(IReadOnlyCollection<long> nodeIds);
 
     Task<NodeRelationEntity?> GetAsync(long id);
 

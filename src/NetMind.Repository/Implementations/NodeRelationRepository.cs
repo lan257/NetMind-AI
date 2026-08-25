@@ -96,6 +96,37 @@ public sealed class NodeRelationRepository : INodeRelationRepository
 
         return result;
     }
+public async Task<IReadOnlyList<NodeRelationEntity>> GetByNodeIdsAsync(IReadOnlyCollection<long> nodeIds)
+    {
+        if (nodeIds.Count == 0)
+        {
+            return Array.Empty<NodeRelationEntity>();
+        }
+
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT r.id, r.source_id, r.target_id, r.relation_type, r.weight, r.map_id, r.created_at, r.is_deleted, r.deleted_at,
+                   s.title as source_title, t.title as target_title,
+                   s.map_id as source_map_id, t.map_id as target_map_id
+            FROM node_relation r
+            JOIN node s ON r.source_id = s.id
+            JOIN node t ON r.target_id = t.id
+            WHERE (r.source_id = ANY(@ids) OR r.target_id = ANY(@ids)) AND r.is_deleted = FALSE
+            ORDER BY r.id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("ids", nodeIds.ToArray());
+
+        var result = new List<NodeRelationEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(ReadRelation(reader));
+        }
+
+        return result;
+    }
 
     public async Task<NodeRelationEntity?> GetAsync(long id)
     {

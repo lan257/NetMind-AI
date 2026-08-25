@@ -149,6 +149,74 @@ Assert(exported is not null && exported.Transfer.Nodes.Count == 2 && exported.Tr
 
 var deleteResult = await mindMapService.DeleteAsync(createdMap.Id, cascade: true);
 Assert(deleteResult.AffectedCount == 4, "Cascade delete should mark the map, nodes and relation as deleted.");
+// ---- 知识探索模式（explore）----
+var exploreService = new ExploreNodeService(
+    new NodeRepository(connectionFactory, NullAppLogger.Instance),
+    nodeRelationRepository);
+
+var exploreMap = await mindMapService.CreateAsync(new CreateMindMapRequest { Title = "探索模式集成测试导图" });
+Assert(exploreMap.Id > 0, "探索测试导图应创建成功。");
+
+var nodeA = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "A", OrderNo = 1 });
+var nodeB = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "B", OrderNo = 2 });
+var nodeC = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "C", OrderNo = 3 });
+var nodeD = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "D", OrderNo = 4 });
+var nodeE = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "E", OrderNo = 5 });
+var nodeF = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "F", OrderNo = 6 });
+var nodeG = await nodeService.CreateAsync(new CreateNodeRequest { MapId = exploreMap.Id, Title = "G", OrderNo = 7 });
+
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeA.Id, TargetId = nodeB.Id, RelationType = "relates_to", Weight = 1 });
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeA.Id, TargetId = nodeC.Id, RelationType = "relates_to", Weight = 1 });
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeB.Id, TargetId = nodeD.Id, RelationType = "relates_to", Weight = 1 });
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeC.Id, TargetId = nodeD.Id, RelationType = "relates_to", Weight = 1 });
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeD.Id, TargetId = nodeE.Id, RelationType = "relates_to", Weight = 1 });
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeE.Id, TargetId = nodeA.Id, RelationType = "relates_to", Weight = 1 });
+await relationService.CreateAsync(new CreateNodeRelationRequest { MapId = exploreMap.Id, SourceId = nodeB.Id, TargetId = nodeF.Id, RelationType = "relates_to", Weight = 1 });
+
+
+// depth=1：A → {A,B,C}，关系 2 条（A→B、A→C）
+var explore1 = await exploreService.ExploreAsync(nodeA.Id, 1);
+Assert(explore1 is not null && explore1.CenterNode.Id == nodeA.Id, "探索结果应以 A 为中心节点。");
+Assert(explore1!.Nodes.Select(n => n.Id).OrderBy(x => x).SequenceEqual(new[] { nodeA.Id, nodeB.Id, nodeC.Id }),
+    "depth=1 从 A 应返回节点 A、B、C（含中心，共 3 个）。");
+Assert(explore1.Relations.Count == 2, "depth=1 从 A 应返回 2 条关系（A→B、A→C）。");
+
+// depth=2：A → {A,B,C,D,F}（D 双路径只计一次），关系 5 条（含 B→F 叶子）
+var explore2 = await exploreService.ExploreAsync(nodeA.Id, 2);
+Assert(explore2 is not null && explore2.Nodes.Select(n => n.Id).OrderBy(x => x).SequenceEqual(new[] { nodeA.Id, nodeB.Id, nodeC.Id, nodeD.Id, nodeF.Id }),
+    "depth=2 从 A 应返回节点 A、B、C、D、F（共 5 个，D 双路径只计一次）。");
+Assert(explore2!.Relations.Count == 5, "depth=2 从 A 应返回 5 条关系（A→B、A→C、B→D、C→D、B→F）。");
+
+// depth=3：应到达 E（A-B/C-D-E），E→A 环不导致重复或死循环，Nodes {A..F} 共 6 个
+var explore3 = await exploreService.ExploreAsync(nodeA.Id, 3);
+Assert(explore3 is not null && explore3.Nodes.Select(n => n.Id).OrderBy(x => x).SequenceEqual(new[] { nodeA.Id, nodeB.Id, nodeC.Id, nodeD.Id, nodeE.Id, nodeF.Id }),
+    "depth=3 从 A 应返回节点 A、B、C、D、E、F（共 6 个，到达 E 且环不导致死循环）。");
+Assert(explore3!.Nodes.Select(n => n.Id).Distinct().Count() == 6, "depth=3 节点应无重复（环不导致重复）。");
+Assert(explore3.Relations.Count == 7, "depth=3 应包含全部 7 条关系（E→A 两端均在子图内，故纳入）。");
+
+// 非法 depth：service 应抛出 ArgumentOutOfRangeException
+var depthZeroThrew = false;
+try { await exploreService.ExploreAsync(nodeA.Id, 0); }
+catch (ArgumentOutOfRangeException) { depthZeroThrew = true; }
+Assert(depthZeroThrew, "depth=0 应抛出 ArgumentOutOfRangeException。");
+
+var depthFourThrew = false;
+try { await exploreService.ExploreAsync(nodeA.Id, 4); }
+catch (ArgumentOutOfRangeException) { depthFourThrew = true; }
+Assert(depthFourThrew, "depth=4 应抛出 ArgumentOutOfRangeException。");
+
+// 不存在的节点 → null
+var missingExplore = await exploreService.ExploreAsync(999999999999L, 2);
+Assert(missingExplore is null, "不存在的节点探索应返回 null。");
+
+// 孤立节点 G：depth=2 只有自己，无关系
+var exploreG = await exploreService.ExploreAsync(nodeG.Id, 2);
+Assert(exploreG is not null && exploreG.Nodes.Count == 1 && exploreG.Nodes[0].Id == nodeG.Id, "孤立节点探索应只返回自己。");
+Assert(exploreG!.Relations.Count == 0, "孤立节点探索应返回 0 条关系。");
+
+// 清理：1 导图 + 7 节点 + 7 关系 = 15
+var exploreCleanup = await mindMapService.DeleteAsync(exploreMap.Id, cascade: true);
+Assert(exploreCleanup.AffectedCount == 15, "探索测试清理应软删导图、节点与关系共 15 行。");
 
 Console.WriteLine("NetMind integration tests passed.");
 
@@ -264,6 +332,7 @@ internal sealed class StubNodeRepository : INodeRepository
     public Task<IReadOnlyList<NodeEntity>> ListByMapAsync(long mapId) => Task.FromResult<IReadOnlyList<NodeEntity>>(Array.Empty<NodeEntity>());
     public Task<IReadOnlyList<NodeEntity>> SearchAsync(long? mapId, string keyword, int limit) => Task.FromResult<IReadOnlyList<NodeEntity>>(Array.Empty<NodeEntity>());
     public Task<NodeEntity?> GetAsync(long id) => Task.FromResult<NodeEntity?>(null);
+    public Task<IReadOnlyList<NodeEntity>> GetByIdsAsync(IReadOnlyCollection<long> ids) => Task.FromResult<IReadOnlyList<NodeEntity>>(Array.Empty<NodeEntity>());
     public Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId) => Task.FromResult(false);
     public Task<NodeEntity> CreateAsync(long mapId, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY) => Task.FromResult(new NodeEntity());
     public Task<NodeEntity?> UpdateAsync(long id, long? parentId, string title, string? content, int orderNo, double? positionX, double? positionY) => Task.FromResult<NodeEntity?>(null);
@@ -276,6 +345,7 @@ internal sealed class StubNodeRelationRepository : INodeRelationRepository
     public Task<IReadOnlyList<NodeRelationEntity>> ListByMapAsync(long mapId) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
     public Task<IReadOnlyList<NodeRelationEntity>> ListBySourceAsync(long sourceId) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
     public Task<IReadOnlyList<NodeRelationEntity>> ListByNodeAsync(long nodeId) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
+    public Task<IReadOnlyList<NodeRelationEntity>> GetByNodeIdsAsync(IReadOnlyCollection<long> nodeIds) => Task.FromResult<IReadOnlyList<NodeRelationEntity>>(Array.Empty<NodeRelationEntity>());
     public Task<NodeRelationEntity?> GetAsync(long id) => Task.FromResult<NodeRelationEntity?>(null);
     public Task<NodeRelationEntity> CreateAsync(long sourceId, long targetId, string relationType, double weight, long mapId) => Task.FromResult(new NodeRelationEntity());
     public Task<NodeRelationEntity?> UpdateAsync(long id, string relationType, double weight) => Task.FromResult<NodeRelationEntity?>(null);

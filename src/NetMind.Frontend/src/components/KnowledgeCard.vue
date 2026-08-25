@@ -1,6 +1,6 @@
 <script setup>
 import { ref, nextTick, watch } from 'vue';
-import { FullScreen, Location, Link, ArrowLeft, Refresh } from '@element-plus/icons-vue';
+import { FullScreen, Location, Link, ArrowLeft, Refresh, Search } from '@element-plus/icons-vue';
 import { renderMarkdown } from '../composables/useMarkdown';
 import { api } from '../services/api';
 import NodeAiChatPanel from './NodeAiChatPanel.vue';
@@ -21,7 +21,7 @@ const props = defineProps({
   searchNodes: { type: Function, default: null }
 });
 
-const emit = defineEmits(['preview-node', 'jump-to-node', 'save-node', 'create-relation', 'delete-relation']);
+const emit = defineEmits(['preview-node', 'jump-to-node', 'save-node', 'create-relation', 'delete-relation', 'explore']);
 
 const graphOpen = ref(false);
 const currentNode = ref(null);
@@ -198,6 +198,7 @@ function jumpToMap() {
         <section class="relation-section">
           <div class="relation-section-heading">
             <span>关联图谱</span>
+            <el-button :icon="Search" size="small" :disabled="!currentNode" @click="$emit('explore', currentNode)">知识探索</el-button>
             <el-button :icon="FullScreen" size="small" :disabled="!currentNode" @click="graphOpen = true">详情大图</el-button>
           </div>
           <RelationGraphCanvas

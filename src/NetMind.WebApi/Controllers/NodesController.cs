@@ -10,9 +10,11 @@ namespace NetMind.WebApi.Controllers;
 public sealed class NodesController : ControllerBase
 {
     private readonly INodeService _nodeService;
+    private readonly IExploreNodeService _exploreService;
 
-    public NodesController(INodeService nodeService)
+    public NodesController(INodeService nodeService, IExploreNodeService exploreService)
     {
+        _exploreService = exploreService;
         _nodeService = nodeService;
     }
 
@@ -75,5 +77,27 @@ public sealed class NodesController : ControllerBase
     {
         var result = await _nodeService.DeleteSubtreeAsync(id);
         return result.Deleted ? ApiResult<DeleteResultDto>.Ok(result) : NotFound(ApiResult<DeleteResultDto>.Fail("节点不存在。"));
+    }
+[HttpGet("{id:long}/explore")]
+    public async Task<ActionResult<ApiResult<ExploreNodeResultDto>>> ExploreAsync(long id, [FromQuery] int depth = 2)
+    {
+        if (depth is < 1 or > 3)
+        {
+            return BadRequest(ApiResult<ExploreNodeResultDto>.Fail("探索深度必须在 1~3 之间。"));
+        }
+
+        ExploreNodeResultDto? result;
+        try
+        {
+            result = await _exploreService.ExploreAsync(id, depth);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return BadRequest(ApiResult<ExploreNodeResultDto>.Fail(ex.Message));
+        }
+
+        return result is null
+            ? NotFound(ApiResult<ExploreNodeResultDto>.Fail("节点不存在。"))
+            : ApiResult<ExploreNodeResultDto>.Ok(result);
     }
 }

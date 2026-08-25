@@ -1,15 +1,17 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import CreateMapPage from './components/CreateMapPage.vue';
 import FloatingMessage from './components/FloatingMessage.vue';
 import MapSidebar from './components/MapSidebar.vue';
 import MindMapCanvas from './components/MindMapCanvas.vue';
 import KnowledgeCard from './components/KnowledgeCard.vue';
+import ExplorePanel from './components/ExplorePanel.vue';
 import NodeTreeView from './components/NodeTreeView.vue';
 import SettingsDialog from './components/SettingsDialog.vue';
 import { useMindMapWorkspace } from './composables/useMindMapWorkspace';
 import { loadGlobalModels } from './composables/useGlobalModel';
+import { useExploreMode } from './composables/useExploreMode';
 
 const workspace = useMindMapWorkspace();
 const page = ref('main');
@@ -18,6 +20,17 @@ const viewMode = ref('graph');
 const createViewMode = ref('graph');
 const previewNode = ref(null);
 const settingsOpen = ref(false);
+
+const explore = useExploreMode();
+const { exploreActive, explorePath, exploreDepth, exploreLoading, exploreError, exploreData, exploreCenter } = explore;
+const exploreVisible = ref(false);
+watch(exploreActive, (active) => { exploreVisible.value = active; });
+watch(exploreVisible, (visible) => { if (!visible && exploreActive.value) explore.exitExploreMode(); });
+
+function startExplore(node) {
+  explore.enterExploreMode(node);
+  exploreVisible.value = true;
+}
 
 function openCreatePage() {
   page.value = 'create';
@@ -128,6 +141,7 @@ onMounted(async () => {
           @save-node="workspace.updateNode"
           @create-relation="workspace.createRelation"
           @delete-relation="workspace.deleteRelation"
+          @explore="startExplore"
         />
       </section>
     </template>
@@ -142,5 +156,19 @@ onMounted(async () => {
     />
 
     <SettingsDialog v-model="settingsOpen" />
+
+    <ExplorePanel
+      v-model="exploreVisible"
+      :explore-path="explorePath"
+      :explore-depth="exploreDepth"
+      :explore-loading="exploreLoading"
+      :explore-error="exploreError"
+      :explore-data="exploreData"
+      :explore-center="exploreCenter"
+      @set-depth="explore.setExploreDepth"
+      @node-click="explore.exploreNodeClick"
+      @go-to-index="explore.goBackToPathIndex"
+      @exit="explore.exitExploreMode"
+    />
   </main>
 </template>

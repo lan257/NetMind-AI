@@ -33,3 +33,4 @@ appsettings.*.Local.json
 .deepseek/
 AI文档/.obsidian/
 *.iss
+/_coaa

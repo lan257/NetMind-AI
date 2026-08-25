@@ -9,6 +9,7 @@ public interface INodeRepository
     Task<IReadOnlyList<NodeEntity>> SearchAsync(long? mapId, string keyword, int limit);
 
     Task<NodeEntity?> GetAsync(long id);
+Task<IReadOnlyList<NodeEntity>> GetByIdsAsync(IReadOnlyCollection<long> ids);
 
     Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId);
 

@@ -33,6 +33,7 @@ builder.Services.AddScoped<IProjectStatusService, ProjectStatusService>();
 builder.Services.AddScoped<IMindMapService, MindMapService>();
 builder.Services.AddScoped<INodeService, NodeService>();
 builder.Services.AddScoped<INodeRelationService, NodeRelationService>();
+builder.Services.AddScoped<IExploreNodeService, ExploreNodeService>();
 builder.Services.AddScoped<IMindMapTransferService, MindMapTransferService>();
 builder.Services.AddScoped<IAiConversationRecordService, AiConversationRecordService>();
 builder.Services.AddScoped<IAiAgentService, AiAgentService>();

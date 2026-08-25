@@ -98,6 +98,35 @@ public sealed class NodeRepository : INodeRepository
         await using var reader = await command.ExecuteReaderAsync();
         return await reader.ReadAsync() ? ReadNode(reader) : null;
     }
+public async Task<IReadOnlyList<NodeEntity>> GetByIdsAsync(IReadOnlyCollection<long> ids)
+    {
+        if (ids.Count == 0)
+        {
+            return Array.Empty<NodeEntity>();
+        }
+
+        await using var connection = await _connectionFactory.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT n.id, n.map_id, n.parent_id, n.title, n.content, n.order_no, n.position_x, n.position_y, n.created_at, n.updated_at, n.is_deleted, n.deleted_at,
+                   m.title as map_title
+            FROM node n
+            LEFT JOIN mind_map m ON n.map_id = m.id
+            WHERE n.id = ANY(@ids) AND n.is_deleted = FALSE
+            ORDER BY n.id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("ids", ids.ToArray());
+
+        var result = new List<NodeEntity>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(ReadNode(reader));
+        }
+
+        return result;
+    }
 
     public async Task<bool> ExistsSiblingOrderNoAsync(long mapId, long? parentId, int orderNo, long excludeNodeId)
     {

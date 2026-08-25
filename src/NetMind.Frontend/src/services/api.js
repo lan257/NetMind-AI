@@ -20,6 +20,11 @@ export async function api(path, options = {}) {
   return result.data;
 }
 
+/** 获取节点的知识探索数据（含中心节点、各层相邻节点与关系边）。 */
+export function getNodeExplore(id, depth) {
+  return api(`/api/nodes/${id}/explore?depth=${depth}`);
+}
+
 export function downloadUrl(url) {
   window.location.href = url;
 }
